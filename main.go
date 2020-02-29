@@ -70,10 +70,6 @@ func makeHandler(request chan storeOp, response chan storeOp) func(http.Response
 				if err != nil {
 					log.Println(err)
 				}
-				_, err = w.Write([]byte("\n"))
-				if err != nil {
-					log.Println(err)
-				}
 			} else {
 				w.WriteHeader(http.StatusNotFound)
 			}
