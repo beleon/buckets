@@ -356,7 +356,7 @@
 </div>
 <article>
     <header>
-        <h1> Buckets</h1>
+        <h1><img style="width: 55px" class="buckets_logo"></img> Buckets</h1>
         <p>
         <label for="text_data">Enter text or upload file. Stored data may disappear after a while.
             <textarea id="text_data" placeholder="Enter some text here..." autofocus></textarea>
@@ -404,6 +404,73 @@
 </article>
 
 <script>
+let favIcon = "data:image/png;base64,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\n";
+
+let docHead = document.getElementsByTagName('head')[0];
+let newLink = document.createElement('link');
+newLink.rel = 'shortcut icon';
+newLink.href = favIcon;
+docHead.appendChild(newLink);
+let logoImages = document.getElementsByClassName("buckets_logo");
+for (let i = 0; i < logoImages.length; i++) {
+    logoImages[i].src = favIcon;
+}
+
 function has(object, key) {
     return object ? hasOwnProperty.call(object, key) : false;
 }
