@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -37,6 +38,8 @@ var ttl = 172800 //Time to live in seconds, 0 means unlimited, default: 2 days
 var maxBuckets = 1000
 var slugSize = 4
 var seededRand *rand.Rand = rand.New(rand.NewSource(time.Now().UnixNano()))
+
+var storeMutex sync.Mutex
 
 
 func main() {
@@ -89,8 +92,10 @@ func makeHandler(request chan storeOp, response chan storeOp) func(http.Response
 					log.Println(err)
 				}
 			} else {
+				storeMutex.Lock()
 				request <- storeOp{storeGet, path}
 				op := <-response
+				storeMutex.Unlock()
 				if op.method == storePresent {
 					_, err := w.Write(op.body.([]byte))
 					if err != nil {
@@ -106,20 +111,24 @@ func makeHandler(request chan storeOp, response chan storeOp) func(http.Response
 				log.Println(err)
 				w.WriteHeader(http.StatusInternalServerError)
 			} else {
+				storeMutex.Lock()
 				if path != "" {
 					request <- storeOp{storeSetWithPath, setWithPath{path, bytes}}
 				} else {
 					request <- storeOp{storeSet, bytes}
 				}
 				op := <- response
+				storeMutex.Unlock()
 				_, err := w.Write([]byte(baseUrl + "/" + op.body.(string) + "\n"))
 				if err != nil {
 					log.Println(err)
 				}
 			}
 		} else if r.Method == http.MethodDelete {
+			storeMutex.Lock()
 			request <- storeOp{storeDelete, path}
 			op := <- response
+			storeMutex.Unlock()
 			if op.method == storeNotPresent {
 				w.WriteHeader(http.StatusNotFound)
 			}
