@@ -1,0 +1,455 @@
+<!doctype html>
+
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+
+    <title>Buckets Homepage</title>
+    <meta name="description" content="Buckets Homepage. Store text or upload file.">
+    <style>
+        #file-input {
+            cursor: pointer;
+            outline: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 0;
+            height: 0;
+            overflow: hidden;
+            filter: alpha(opacity=0); /* IE < 9 */
+            opacity: 0;
+        }
+        .input-label {
+            cursor: pointer;
+            position: relative;
+            display: inline-block;
+        }
+        #overlay {
+            position: fixed; /* Sit on top of the page content */
+            display: none; /* Hidden by default */
+            width: 100%; /* Full width (cover the whole page) */
+            height: 100%; /* Full height (cover the whole page) */
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0,0,0,0.5); /* Black background with opacity */
+            z-index: 2; /* Specify a stack order in case you're using a different order for other elements */
+        }
+        #confirm {
+            display: none;
+            background-color: #F3F5F6;
+            color: #000000;
+            border: 1px solid #aaa;
+            width: 500px;
+            height: 200px;
+            box-sizing: border-box;
+            margin: 0 auto 0 auto;
+        }
+        #confirm .message {
+            margin: 20px;
+        }
+        #confirm button {
+            color: black;
+            background-color: #F3F5F6;
+            border-color: black;
+            border-style: solid;
+            border-width: 2px;
+            margin-left: 188px;
+        }
+        textarea {
+            margin-top: 10px;
+            width: 100%;
+            height: 300px;
+            -moz-border-bottom-colors: none;
+            -moz-border-left-colors: none;
+            -moz-border-right-colors: none;
+            -moz-border-top-colors: none;
+            background: none repeat scroll 0 0 rgba(240, 240, 240, 0.9);
+            border-color: #FFFFFF #FFFFFF;
+            border-image: none;
+            border-radius: 6px 6px 6px 6px;
+            border-style: none solid solid none;
+            border-width: medium 1px 1px medium;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12) inset;
+            color: #555555;
+            font-family: "Helvetica Neue",Helvetica,Arial,sans-serif;
+            font-size: 1em;
+            line-height: 1.4em;
+            padding: 5px 8px;
+            transition: background-color 0.2s ease 0s;
+        }
+
+
+        textarea:focus {
+            background: none repeat scroll 0 0 #FFFFFF;
+            outline-width: 0;
+        }
+
+        button {
+            font-size: 0.8em;
+            color: white;
+            background-color: #222;
+            border-color: white;
+            border-width: 2px;
+            border-style: solid;
+            border-radius: 35px;
+            padding-top: 15px;
+            padding-bottom: 18px;
+            padding-left: 50px;
+            padding-right: 50px;
+        }
+
+        button::-moz-focus-inner {
+            border: 0;
+            padding: 0;
+        }
+
+        button:hover, button:focus {
+            cursor: pointer;
+            font-size: 0.9em;
+            position: relative;
+            left: -5px;
+            top: -1px;
+            padding-top: 16px;
+            padding-bottom: 19px;
+            padding-left: 52px;
+            padding-right: 52px;
+            outline: none;
+        }
+
+        /* https://github.com/markdowncss/retro/blob/master/css/retro.css
+           LICENSE:
+           The MIT License (MIT)
+           Copyright (c) 2014-2015 John Otander
+
+           Permission is hereby granted, free of charge, to any person obtaining a copy
+           of this software and associated documentation files (the "Software"), to deal
+           in the Software without restriction, including without limitation the rights
+           to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+           copies of the Software, and to permit persons to whom the Software is
+           furnished to do so, subject to the following conditions:
+
+           The above copyright notice and this permission notice shall be included in
+           all copies or substantial portions of the Software.
+
+           THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+           IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+           FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+           AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+           LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+           OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+           THE SOFTWARE.
+        */
+        pre,
+        code {
+            font-family: Menlo, Monaco, "Courier New", monospace;
+        }
+
+        pre {
+            padding: .5rem;
+            line-height: 1.25;
+            overflow-x: auto;
+        }
+
+        @media print {
+            *,
+            *:before,
+            *:after {
+                background: transparent !important;
+                color: #000 !important;
+                box-shadow: none !important;
+                text-shadow: none !important;
+            }
+
+            a,
+            a:visited {
+                text-decoration: underline;
+            }
+
+            a[href]:after {
+                content: " (" attr(href) ")";
+            }
+
+            abbr[title]:after {
+                content: " (" attr(title) ")";
+            }
+
+            a[href^="#"]:after,
+            a[href^="javascript:"]:after {
+                content: "";
+            }
+
+            pre,
+            blockquote {
+                border: 1px solid #999;
+                page-break-inside: avoid;
+            }
+
+            thead {
+                display: table-header-group;
+            }
+
+            tr,
+            img {
+                page-break-inside: avoid;
+            }
+
+            img {
+                max-width: 100% !important;
+            }
+
+            p,
+            h2,
+            h3 {
+                orphans: 3;
+                widows: 3;
+            }
+
+            h2,
+            h3 {
+                page-break-after: avoid;
+            }
+        }
+
+        a,
+        a:visited {
+            color: #01ff70;
+        }
+
+        a:hover,
+        a:focus,
+        a:active {
+            color: #2ecc40;
+        }
+
+        .retro-no-decoration {
+            text-decoration: none;
+        }
+
+        html {
+            font-size: 12px;
+        }
+
+        @media screen and (min-width: 32rem) and (max-width: 48rem) {
+            html {
+                font-size: 15px;
+            }
+        }
+
+        @media screen and (min-width: 48rem) {
+            html {
+                font-size: 16px;
+            }
+        }
+
+        body {
+            line-height: 1.85;
+        }
+
+        p,
+        .retro-p {
+            font-size: 1rem;
+            margin-bottom: 1.3rem;
+        }
+
+        h1,
+        .retro-h1,
+        h2,
+        .retro-h2,
+        h3,
+        .retro-h3,
+        h4,
+        .retro-h4 {
+            margin: 1.414rem 0 .5rem;
+            font-weight: inherit;
+            line-height: 1.42;
+        }
+
+        h1,
+        .retro-h1 {
+            margin-top: 0;
+            font-size: 3.998rem;
+        }
+
+        h2,
+        .retro-h2 {
+            font-size: 2.827rem;
+        }
+
+        h3,
+        .retro-h3 {
+            font-size: 1.999rem;
+        }
+
+        h4,
+        .retro-h4 {
+            font-size: 1.414rem;
+        }
+
+        h5,
+        .retro-h5 {
+            font-size: 1.121rem;
+        }
+
+        h6,
+        .retro-h6 {
+            font-size: .88rem;
+        }
+
+        small,
+        .retro-small {
+            font-size: .707em;
+        }
+
+        /* https://github.com/mrmrs/fluidity */
+
+        img,
+        canvas,
+        iframe,
+        video,
+        svg,
+        select,
+        textarea {
+            max-width: 100%;
+        }
+
+        html,
+        body {
+            background-color: #222;
+            min-height: 100%;
+        }
+
+        html {
+            font-size: 18px;
+        }
+
+        body {
+            color: #fafafa;
+            font-family: "sans-serif";
+            line-height: 1.45;
+            margin: 6rem auto 1rem;
+            max-width: 48rem;
+            padding: .25rem;
+        }
+
+        pre {
+            background-color: #333;
+        }
+
+        blockquote {
+            border-left: 3px solid #01ff70;
+            padding-left: 1rem;
+        }
+    </style>
+</head>
+
+<body>
+<div id="overlay"></div>
+<div style="z-index:10; width: 100%; position: absolute; left: 0; top: 0;">
+<div style="width: 100%; position: fixed; top: 300px;">
+<div id="confirm">
+    <p class="message"></p><br>
+    <button class="yes" onclick="reloadPage()">OK</button>
+</div>
+</div>
+</div>
+<article>
+    <header>
+        <h1> Buckets</h1>
+        <p>
+        <label for="text_data">Enter text or upload file. Stored data may disappear after a while.
+            <textarea id="text_data" placeholder="Enter some text here..." autofocus></textarea>
+        </label>
+        </p>
+        <p>
+        <div style="height: 80px">
+        <div style="width: 200px; float: left;"><button onclick="submit()">SUBMIT</button></div>
+        <label for="file-input" class="input-label">
+            <button onclick="upload()">UPLOAD FILE</button>
+            <input type="file" id="file-input">
+        </label>
+        </div>
+        </p>
+        <h2>API Usage</h2>
+        <h3>Storing Buckets</h3>
+        <p>
+            To store a bucket send a POST request to <a href="{{baseurl}}">{{baseurl}}</a> with the message or file as the request body. Storing
+            a message with curl would look like this:
+            <pre><code>curl -X POST --data "Hello, World" {{baseurl}}</code></pre>
+            A file upload would look like this:
+            <pre><code>curl -X POST --data-binary @path/to/file {{baseurl}}</code></pre>
+            The response is the URL where your data is stored at. E.g. <a href="{{baseurl}}/shbo">{{baseurl}}/shbo</a>
+        </p>
+        <p>
+            You can also store a bucket at a location of your choice by sending a POST request to that location:
+            <pre><code>curl -X POST --data-binary @path/to/file {{baseurl}}/my/custom/bucket/location</code></pre>
+            Now your bucket is stored at <a href="{{baseurl}}/my/custom/bucket/location">{{baseurl}}/my/custom/bucket/location</a>.<br/>
+            WARNING: This will replace any data that was stored at this location before.
+        </p>
+        <h3>Retrieving Buckets</h3>
+        <p>
+            Simply send a GET request to the URL your bucket is stored at. E.g. through opening the address in your
+            browser or using curl:
+            <pre><code>curl {{baseurl}}/shbo</code></pre>
+            If your bucket stores binary data you can save the data into a file using:
+            <pre><code>curl -o path/to/savefile {{baseurl}}/shbo</code></pre>
+        </p>
+        <h3>Deleting Buckets</h3>
+        <p>
+            To delete a bucket send a DELETE request to the URL your bucket is stored at. E.g. using curl:
+            <pre><code>curl -X DELETE {{baseurl}}/shbo</code></pre>
+        </p>
+    </header>
+</article>
+
+<script>
+function has(object, key) {
+    return object ? hasOwnProperty.call(object, key) : false;
+}
+function reloadPage() {
+    window.location.href = "";
+}
+function upload() {
+    document.activeElement.blur();
+    if (!has(window, "bucketActivated")) {
+        document.getElementById('file-input').onchange = function() {
+            showLoadingDialog();
+            sendData(document.getElementById('file-input').files[0]);
+        };
+        document.getElementById("file-input").click();
+    }
+}
+function submit() {
+    document.activeElement.blur();
+    if (!has(window, "bucketActivated")) {
+        showLoadingDialog();
+        let text = document.getElementById("text_data").value;
+        sendData(text);
+    }
+}
+
+function showLoadingDialog() {
+    let overlay = document.getElementById("overlay");
+    overlay.style.display = "block";
+    let confirmBox = document.getElementById("confirm");
+    confirmBox.getElementsByClassName("message")[0].innerHTML = "Sending data...";
+    confirmBox.style.display = "block";
+}
+
+function sendData(data) {
+    window.bucketActivated = true;
+    let xhttp = new XMLHttpRequest();
+    xhttp.onreadystatechange = function() {
+        if (this.readyState === 4 && this.status === 200) {
+            let res = this.responseText;
+            let confirmBox = document.getElementById("confirm");
+            confirmBox.getElementsByClassName("message")[0].innerHTML = "The bucket is now available at <a href=\"" + res + "\">" + res + "</a>";
+        }
+    };
+    xhttp.open("POST", "", true);
+    xhttp.send(data);
+}
+</script>
+</body>
+</html>

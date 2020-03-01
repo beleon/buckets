@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -32,7 +33,7 @@ type setWithPath struct {
 
 var baseUrl string = "http://localhost:8080"
 var charset = "abcdefghijklmnopqrstuvwxyz"
-var ttl = 0 //Time to live in seconds, 0 means unlimited
+var ttl = 172800 //Time to live in seconds, 0 means unlimited, default: 2 days
 var maxBuckets = 1000
 var slugSize = 4
 var seededRand *rand.Rand = rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -57,21 +58,47 @@ func main() {
 }
 
 func makeHandler(request chan storeOp, response chan storeOp) func(http.ResponseWriter, *http.Request) {
+	indexHtml := ""
+	{
+		file, err := os.Open("index.html")
+		if err != nil {
+			log.Panic(err)
+		}
+		indexHtmlFile, err := ioutil.ReadAll(file)
+		if err != nil {
+			log.Panic(err)
+		}
+		err = file.Close()
+		if err != nil {
+			log.Println(err)
+		}
+		indexHtml = string(indexHtmlFile)
+		indexHtml = strings.ReplaceAll(indexHtml, "{{baseurl}}", baseUrl)
+	}
+
+
 	return func (w http.ResponseWriter, r *http.Request) {
 		path := ""
 		if len(r.URL.Path) > 0 {
 			path = r.URL.Path[1:]
 		}
 		if r.Method == http.MethodGet {
-			request <- storeOp{storeGet, path}
-			op := <- response
-			if op.method == storePresent {
-				_, err := w.Write(op.body.([]byte))
+			if path == "" {
+				_, err := w.Write([]byte(indexHtml))
 				if err != nil {
 					log.Println(err)
 				}
 			} else {
-				w.WriteHeader(http.StatusNotFound)
+				request <- storeOp{storeGet, path}
+				op := <-response
+				if op.method == storePresent {
+					_, err := w.Write(op.body.([]byte))
+					if err != nil {
+						log.Println(err)
+					}
+				} else {
+					w.WriteHeader(http.StatusNotFound)
+				}
 			}
 		} else if r.Method == http.MethodPost {
 			bytes, err := ioutil.ReadAll(r.Body)
