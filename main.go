@@ -41,7 +41,6 @@ var seededRand *rand.Rand = rand.New(rand.NewSource(time.Now().UnixNano()))
 
 var storeMutex sync.Mutex
 
-
 func main() {
 	loadEnv()
 
@@ -79,8 +78,7 @@ func makeHandler(request chan storeOp, response chan storeOp) func(http.Response
 		indexHtml = strings.ReplaceAll(indexHtml, "{{baseurl}}", baseUrl)
 	}
 
-
-	return func (w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
 		path := ""
 		if len(r.URL.Path) > 0 {
 			path = r.URL.Path[1:]
@@ -117,7 +115,7 @@ func makeHandler(request chan storeOp, response chan storeOp) func(http.Response
 				} else {
 					request <- storeOp{storeSet, bytes}
 				}
-				op := <- response
+				op := <-response
 				storeMutex.Unlock()
 				_, err := w.Write([]byte(baseUrl + "/" + op.body.(string) + "\n"))
 				if err != nil {
@@ -127,7 +125,7 @@ func makeHandler(request chan storeOp, response chan storeOp) func(http.Response
 		} else if r.Method == http.MethodDelete {
 			storeMutex.Lock()
 			request <- storeOp{storeDelete, path}
-			op := <- response
+			op := <-response
 			storeMutex.Unlock()
 			if op.method == storeNotPresent {
 				w.WriteHeader(http.StatusNotFound)
@@ -138,16 +136,15 @@ func makeHandler(request chan storeOp, response chan storeOp) func(http.Response
 	}
 }
 
-
 func manageStore(request chan storeOp, response chan storeOp) {
 	store := make(map[string][]byte)
 	timeouts := make([]time.Time, 0)
 	keys := make([]string, 0)
 
 	for true {
-		timeout := time.Duration(1<<63-1) //never timeout
+		timeout := time.Duration(1<<63 - 1) //never timeout
 		for len(timeouts) > 0 {
-			if timeouts[0].Before(time.Now()){
+			if timeouts[0].Before(time.Now()) {
 				t := timeouts[0]
 				log.Println("timeout")
 				log.Println(t.Unix())
@@ -180,7 +177,7 @@ func manageStore(request chan storeOp, response chan storeOp) {
 				}
 			} else if op.method == storeSetWithPath || op.method == storeSet {
 				path := ""
-				var body []byte = nil
+				var body []byte
 				if len(keys) == maxBuckets {
 					delete(store, keys[0])
 					deleteKey(&keys, &timeouts, keys[0])
@@ -203,7 +200,7 @@ func manageStore(request chan storeOp, response chan storeOp) {
 				store[path] = body
 				keys = append(keys, path)
 				if ttl == 0 {
-					timeouts = append(timeouts, time.Unix(1<<33 - 1, 0))
+					timeouts = append(timeouts, time.Unix(1<<33-1, 0))
 				} else {
 					timeouts = append(timeouts, time.Now().Add(time.Duration(ttl)*time.Second))
 				}
@@ -211,7 +208,7 @@ func manageStore(request chan storeOp, response chan storeOp) {
 			} else {
 				log.Panicf("unknown store method: %d", op.method)
 			}
-		case <- time.After(timeout):
+		case <-time.After(timeout):
 			delete(store, keys[0])
 			deleteKey(&keys, &timeouts, keys[0])
 		}
