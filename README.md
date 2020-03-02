@@ -14,17 +14,23 @@ Either open your browser at `http://localhost:8080` or use the API directly:
 To store a bucket send a POST request to `http://localhost:8080` with the message or file as the request body. Storing
 a message with curl would look like this:
 
-```curl -X POST --data "Hello, World" http://localhost:8080```
+```bash
+curl -X POST --data "Hello, World" http://localhost:8080
+```
 
 A file upload would look like this:
 
-```curl -X POST --data-binary @path/to/file http://localhost:8080```
+```bash
+curl -X POST --data-binary @path/to/file http://localhost:8080
+```
 
 The response is the URL where your data is stored at. E.g. `http://localhost:8080/shbo`
 
 You can also store a bucket at a location of your choice by sending a POST request to that location:
 
-```curl -X POST --data-binary @path/to/file http://localhost:8080/my/custom/bucket/location```
+```bash
+curl -X POST --data-binary @path/to/file http://localhost:8080/my/custom/bucket/location
+```
 
 Now your bucket is stored at `http://localhost:8080/my/custom/bucket/location`.
 
@@ -34,16 +40,22 @@ WARNING: This will replace any data that was stored at this location before.
 Simply send a GET request to the URL your bucket is stored at. E.g. through opening the address in your
 browser or using curl:
 
-```curl http://localhost:8080/shbo```
+```bash
+curl http://localhost:8080/shbo
+```
 
 If your bucket stores binary data you can save the data into a file using:
 
-```curl -o path/to/savefile http://localhost:8080/shbo```
+```bash
+curl -o path/to/savefile http://localhost:8080/shbo
+```
 
 ### Deleting Buckets
 To delete a bucket send a DELETE request to the URL your bucket is stored at. E.g. using curl:
 
-```curl -X DELETE http://localhost:8080/shbo```
+```bash
+curl -X DELETE http://localhost:8080/shbo
+```
 
 ## Setup
 
@@ -53,19 +65,27 @@ Working go installation and git needed.
 
 clone project:
 
-```git clone https://github.com/sellleon/buckets```
+```bash
+git clone https://github.com/sellleon/buckets
+```
 
 change into project dir:
 
-```cd buckets```
+```bash
+cd buckets
+```
 
 build project:
 
-```go build```
+```bash
+go build
+```
 
 run:
 
-```./buckets```
+```bash
+./buckets
+```
 
 ### Docker
 
@@ -73,23 +93,33 @@ Working docker installation and git needed.
 
 clone project:
 
-```git clone https://github.com/sellleon/buckets```
+```bash
+git clone https://github.com/sellleon/buckets
+```
 
 change into project dir:
 
-```cd buckets```
+```bash
+cd buckets
+```
 
 build docker image:
 
-```docker image build -t buckets:0.1 .```
+```bash
+docker image build -t buckets:0.1 .
+```
 
 run docker:
 
-```usr/bin/docker run --rm --name=buckets -p 8080:8080 buckets:0.1```
+```bash
+usr/bin/docker run --rm --name=buckets -p 8080:8080 buckets:0.1
+```
 
 or run docker with some environment variables (time to live 2 days, store a maximum of 20 buckets):
 
-```usr/bin/docker run --rm --name=buckets -p 8080:8080 --env BUCKETS_TTL=172800 --env BUCKETS_MAX_BUCKETS=20 buckets:0.1```
+```bash
+usr/bin/docker run --rm --name=buckets -p 8080:8080 --env BUCKETS_TTL=172800 --env BUCKETS_MAX_BUCKETS=20 buckets:0.1
+```
 
 ## Configuration
 
