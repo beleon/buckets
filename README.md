@@ -1,5 +1,6 @@
 # <img src="https://github.com/sellleon/buckets/raw/master/logo.png" width="25px"/> Buckets
 [![Go Report Card](https://goreportcard.com/badge/github.com/sellleon/buckets)](https://goreportcard.com/report/github.com/sellleon/buckets)
+[![MIT license](https://img.shields.io/badge/license-MIT-brightgreen.svg)](https://github.com/sellleon/buckets/blob/master/LICENSE)
 
 A tiny and fast in-memory pastbin with curl support. Buckets is a ~300 lines single file go project with no dependencies which
 serves a single file HTML page with no dependencies using only vanilla javascript. The services can be hosted via
