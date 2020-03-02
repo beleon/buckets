@@ -144,19 +144,14 @@ func manageStore(request chan storeOp, response chan storeOp) {
 	for true {
 		timeout := time.Duration(1<<63 - 1) //never timeout
 		for len(timeouts) > 0 {
-			if timeouts[0].Before(time.Now()) {
-				t := timeouts[0]
-				log.Println("timeout")
-				log.Println(t.Unix())
-				log.Println(time.Now().Unix())
+			now := time.Now()
+			if timeouts[0].Before(now) || timeouts[0].Equal(now) {
 				delete(store, keys[0])
 				deleteKey(&keys, &timeouts, keys[0])
 				continue
 			}
+			timeout = timeouts[0].Sub(now)
 			break
-		}
-		if len(timeouts) > 0 {
-			timeout = timeouts[0].Sub(time.Now())
 		}
 
 		select {
