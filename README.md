@@ -8,7 +8,7 @@ databases.
 
 ## Usage
 
-Either open the browser at `http://localhost:8080` or use the API directly:
+Either open your browser at `http://localhost:8080` or use the API directly:
 
 ### Storing Buckets
 To store a bucket send a POST request to `http://localhost:8080` with the message or file as the request body. Storing
@@ -95,7 +95,7 @@ or run docker with some environment variables (time to live 2 days, store a maxi
 
 A couple of properties can be set via environment variables:
 
-| Env Namee           |  Description                                                                                                                                                              |
+| Env Name            |  Description                                                                                                                                                              |
 |---------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | BUCKETS_BASE_URL    | URL location of your service. Default `http://localhost:8080`. Used for generating links of buckets and for the HTML page.                                                |
 | BUCKETS_CHARSET     | The character set that will be used to generate the location of the buckets. Default is a-z.                                                                              |
