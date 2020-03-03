@@ -2,7 +2,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/sellleon/buckets)](https://goreportcard.com/report/github.com/sellleon/buckets)
 [![MIT license](https://img.shields.io/badge/license-MIT-brightgreen.svg)](https://github.com/sellleon/buckets/blob/master/LICENSE)
 
-A tiny and fast in-memory pastbin with curl support. Buckets is a ~300 lines single file go project with no dependencies which
+A tiny and fast in-memory pastbin with curl support. Buckets is a ~350 lines single file go project with no dependencies which
 serves a single file HTML page with no dependencies using only vanilla javascript. The services can be hosted via
 docker and accessed using simple curl commands. It has no means of authentication and stores all data in memory; no 
 databases.
@@ -126,13 +126,14 @@ usr/bin/docker run --rm --name=buckets -p 8080:8080 --env BUCKETS_TTL=172800 --e
 
 A couple of properties can be set via environment variables:
 
-| Env Name            |  Description                                                                                                                                                              |
-|---------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| BUCKETS_BASE_URL    | URL location of your service. Default `http://localhost:8080`. Used for generating links of buckets and for the HTML page.                                                |
-| BUCKETS_CHARSET     | The character set that will be used to generate the location of the buckets. Default is a-z.                                                                              |
-| BUCKETS_TTL         | A bucket's time to live. Determines how long a bucket will be stored. Default is 2 days. Use 0 for indefinite storage of buckets.                                     |
-| BUCKETS_MAX_BUCKETS | Maximum amount of buckets that can be stored at once. Oldest bucket will be deleted when inserting new bucket when maximum number of buckets is reached. Default is 1000. |
-| BUCKETS_SLUG_SIZE   | Length of the generated bucket location. Default is 4.                                                                                                                    |
-| BUCKETS_SEED        | Mostly for debugging. Seed is used for generating the location of new buckets. Default is current time.                                                                   |
+| Env Name                 |  Description                                                                                                                                                                                                                                                            |
+|--------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| BUCKETS_BASE_URL         | URL location of your service. Default `http://localhost:8080`. Used for generating links of buckets and for the HTML page.                                                                                                                                              |
+| BUCKETS_TTL              | A bucket's time to live. Determines how long a bucket will be stored. Default is 2 days. Use 0 for indefinite storage of buckets.                                                                                                                                       |
+| BUCKETS_MAX_STORAGE_SIZE | Maximum size that the sum of all buckets can have in MB (i.e. 1000000 bytes) as a float64 value. Oldest buckets will be delete until enough free space is available if new bucket would cause the storage size to be larger than the MAX_STORAGE_SIZE. Default is 1000. |
+| BUCKETS_MAX_BUCKETS      | Maximum amount of buckets that can be stored at once. Oldest bucket will be deleted when inserting new bucket when maximum number of buckets is reached. Default is 1000.                                                                                               |
+| BUCKETS_CHARSET          | The character set that will be used to generate the location of the buckets. Default is a-z.                                                                                                                                                                            |
+| BUCKETS_SLUG_SIZE        | Length of the generated bucket location. Default is 4.                                                                                                                                                                                                                  |
+| BUCKETS_SEED             | Mostly for debugging. Seed is used for generating the location of new buckets. Default is current time.                                                                                                                                                                 |
 
 If you want to use TLS/SSL or want to constrain the size of a bucket I'd suggest using nginx with proxy_pass.

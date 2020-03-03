@@ -516,13 +516,16 @@ function sendData(data) {
     window.bucketActivated = true;
     let xhttp = new XMLHttpRequest();
     xhttp.onreadystatechange = function() {
-        if (this.readyState === 4 && this.status === 200) {
-            let res = this.responseText;
+        if (this.readyState === 4) {
             let confirmBox = document.getElementById("confirm");
-            confirmBox.getElementsByClassName("message")[0].innerHTML = "The bucket is now available at <a href=\"" + res + "\">" + res + "</a>";
-        } else if (this.readyState === 4) {
-            let confirmBox = document.getElementById("confirm");
-            confirmBox.getElementsByClassName("message")[0].innerHTML = "There was an error sending the data."
+            if (this.status === 200) {
+                let res = this.responseText;
+                confirmBox.getElementsByClassName("message")[0].innerHTML = "The bucket is now available at <a href=\"" + res + "\">" + res + "</a>";
+            } else if (this.status === 413) {
+                confirmBox.getElementsByClassName("message")[0].innerHTML = "Data size too large."
+            } else {
+                confirmBox.getElementsByClassName("message")[0].innerHTML = "There was an error sending the data."
+            }
         }
     };
     xhttp.open("POST", "", true);

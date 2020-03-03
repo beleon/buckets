@@ -18,9 +18,18 @@ const (
 	storeDelete
 	storeSetWithPath
 	storeSet
+	storeTooLarge
 	storePresent
 	storeNotPresent
 )
+
+type store struct {
+	lookup map[string][]byte
+	timeouts []time.Time
+	keys []string
+	sizes []int
+	totalSize int
+}
 
 type storeOp struct {
 	method int
@@ -38,6 +47,7 @@ var ttl = 172800 //Time to live in seconds, 0 means unlimited, default: 2 days
 var maxBuckets = 1000
 var slugSize = 4
 var seededRand *rand.Rand = rand.New(rand.NewSource(time.Now().UnixNano()))
+var maxStorageSize float64 = 1000 //in MB (i.e. 1000000 bytes)
 
 var storeMutex sync.Mutex
 
@@ -117,9 +127,13 @@ func makeHandler(request chan storeOp, response chan storeOp) func(http.Response
 				}
 				op := <-response
 				storeMutex.Unlock()
-				_, err := w.Write([]byte(baseUrl + "/" + op.body.(string) + "\n"))
-				if err != nil {
-					log.Println(err)
+				if op.method == storeTooLarge {
+					w.WriteHeader(http.StatusRequestEntityTooLarge)
+				} else {
+					_, err := w.Write([]byte(baseUrl + "/" + op.body.(string) + "\n"))
+					if err != nil {
+						log.Println(err)
+					}
 				}
 			}
 		} else if r.Method == http.MethodDelete {
@@ -137,35 +151,31 @@ func makeHandler(request chan storeOp, response chan storeOp) func(http.Response
 }
 
 func manageStore(request chan storeOp, response chan storeOp) {
-	store := make(map[string][]byte)
-	timeouts := make([]time.Time, 0)
-	keys := make([]string, 0)
+	s := store{make(map[string][]byte), make([]time.Time, 0), make([]string, 0), make([]int, 0), 0}
 
 	for true {
 		timeout := time.Duration(1<<63 - 1) //never timeout
-		for len(timeouts) > 0 {
+		for len(s.timeouts) > 0 {
 			now := time.Now()
-			if timeouts[0].Before(now) || timeouts[0].Equal(now) {
-				delete(store, keys[0])
-				deleteKey(&keys, &timeouts, keys[0])
+			if s.timeouts[0].Before(now) || s.timeouts[0].Equal(now) {
+				s.deleteFirstN(1)
 				continue
 			}
-			timeout = timeouts[0].Sub(now)
+			timeout = s.timeouts[0].Sub(now)
 			break
 		}
 
 		select {
 		case op := <-request:
 			if op.method == storeGet {
-				if val, ok := store[op.body.(string)]; ok {
+				if val, ok := s.lookup[op.body.(string)]; ok {
 					response <- storeOp{storePresent, val}
 				} else {
 					response <- storeOp{storeNotPresent, nil}
 				}
 			} else if op.method == storeDelete {
-				if _, ok := store[op.body.(string)]; ok {
-					delete(store, op.body.(string))
-					deleteKey(&keys, &timeouts, op.body.(string))
+				if _, ok := s.lookup[op.body.(string)]; ok {
+					s.deleteKey(op.body.(string))
 					response <- storeOp{storePresent, nil}
 				} else {
 					response <- storeOp{storeNotPresent, nil}
@@ -173,39 +183,44 @@ func manageStore(request chan storeOp, response chan storeOp) {
 			} else if op.method == storeSetWithPath || op.method == storeSet {
 				path := ""
 				var body []byte
-				if len(keys) == maxBuckets {
-					delete(store, keys[0])
-					deleteKey(&keys, &timeouts, keys[0])
-				}
 				if op.method == storeSetWithPath {
 					path = op.body.(setWithPath).path
 					body = op.body.(setWithPath).body
-					if _, ok := store[path]; ok {
-						delete(store, path)
-						deleteKey(&keys, &timeouts, path)
+					if float64(len(body))/(1000000) > maxStorageSize {
+						response <- storeOp{storeTooLarge, nil}
+						break
+					}
+					if _, ok := s.lookup[path]; ok {
+						s.deleteKey(path)
 					}
 				} else {
 					retry := true
 					for retry {
 						path = genSlug()
-						_, retry = store[path]
+						_, retry = s.lookup[path]
 					}
 					body = op.body.([]byte)
+					if float64(len(body))/(1000000) > maxStorageSize {
+						response <- storeOp{storeTooLarge, nil}
+						break
+					}
 				}
-				store[path] = body
-				keys = append(keys, path)
+				s.clearSpace(len(body))
+				s.lookup[path] = body
+				s.keys = append(s.keys, path)
+				s.sizes = append(s.sizes, len(body))
+				s.totalSize += len(body)
 				if ttl == 0 {
-					timeouts = append(timeouts, time.Unix(1<<33-1, 0))
+					s.timeouts = append(s.timeouts, time.Unix(1<<33-1, 0))
 				} else {
-					timeouts = append(timeouts, time.Now().Add(time.Duration(ttl)*time.Second))
+					s.timeouts = append(s.timeouts, time.Now().Add(time.Duration(ttl)*time.Second))
 				}
 				response <- storeOp{storeSet, path}
 			} else {
 				log.Panicf("unknown store method: %d", op.method)
 			}
 		case <-time.After(timeout):
-			delete(store, keys[0])
-			deleteKey(&keys, &timeouts, keys[0])
+			s.deleteFirstN(1)
 		}
 	}
 }
@@ -218,9 +233,36 @@ func genSlug() string {
 	return string(b)
 }
 
-func deleteKey(keys *[]string, timeouts *[]time.Time, key string) {
+func (s *store) clearSpace(dataSize int)  {
+	delCount := 0
+	delSize := 0
+	for maxStorageSize < float64(s.totalSize - delSize + dataSize) / 1000000 {
+		delSize += s.sizes[delCount]
+		delCount++
+	}
+	if len(s.keys) == maxBuckets && delCount == 0 {
+		delCount = 1
+	}
+	s.deleteFirstN(delCount)
+}
+
+func (s *store) deleteFirstN(n int) {
+	for i, key := range s.keys {
+		if i == n {
+			break
+		}
+		s.totalSize -= s.sizes[i]
+		delete(s.lookup, key)
+	}
+
+	s.keys = s.keys[n:]
+	s.timeouts = s.timeouts[n:]
+	s.sizes = s.sizes[n:]
+}
+
+func (s *store) deleteKey(key string) {
 	ind := -1
-	for i, val := range *keys {
+	for i, val := range s.keys {
 		if val == key {
 			ind = i
 			break
@@ -229,15 +271,23 @@ func deleteKey(keys *[]string, timeouts *[]time.Time, key string) {
 	if ind == -1 {
 		log.Panic("could not delete non existing key")
 	}
-	if ind == 0 {
-		*keys = (*keys)[1:]
-		*timeouts = (*timeouts)[1:]
-	} else {
-		copy((*keys)[ind:], (*keys)[ind+1:])
-		*keys = (*keys)[:len(*keys)-1]
 
-		copy((*timeouts)[ind:], (*timeouts)[ind+1:])
-		*timeouts = (*timeouts)[:len(*timeouts)-1]
+	delete(s.lookup, key)
+	s.totalSize -= s.sizes[ind]
+
+	if ind == 0 {
+		s.keys = s.keys[1:]
+		s.timeouts = s.timeouts[1:]
+		s.sizes = s.sizes[1:]
+	} else {
+		copy(s.keys[ind:], s.keys[ind+1:])
+		s.keys = s.keys[:len(s.keys)-1]
+
+		copy(s.timeouts[ind:], s.timeouts[ind+1:])
+		s.timeouts = s.timeouts[:len(s.timeouts)-1]
+
+		copy(s.sizes[ind:], s.sizes[ind+1:])
+		s.sizes = s.sizes[:len(s.sizes)-1]
 	}
 }
 
@@ -265,6 +315,7 @@ func loadEnv() {
 	if loadIntEnv("BUCKETS_SEED", &seed) {
 		seededRand = rand.New(rand.NewSource(int64(seed)))
 	}
+	loadFloat64Env("BUCKETS_MAX_STORAGE_SIZE", &maxStorageSize)
 }
 
 func loadIntEnv(key string, target *int) bool {
@@ -273,6 +324,20 @@ func loadIntEnv(key string, target *int) bool {
 		i, err := strconv.Atoi(val)
 		if err != nil {
 			log.Println(fmt.Errorf("erroring interpreting %s (%s) as int: %s", key, val, err.Error()))
+		} else {
+			*target = i
+			return true
+		}
+	}
+	return false
+}
+
+func loadFloat64Env(key string, target *float64) bool {
+	val := os.Getenv(key)
+	if val != "" {
+		i, err := strconv.ParseFloat(val, 64)
+		if err != nil {
+			log.Println(fmt.Errorf("erroring interpreting %s (%s) as float64: %s", key, val, err.Error()))
 		} else {
 			*target = i
 			return true
