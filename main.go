@@ -105,6 +105,7 @@ func makeHandler(request chan storeOp, response chan storeOp) func(http.Response
 				op := <-response
 				storeMutex.Unlock()
 				if op.method == storePresent {
+					w.Header().Set("content-length", strconv.Itoa(len(op.body.([]byte))))
 					_, err := w.Write(op.body.([]byte))
 					if err != nil {
 						log.Println(err)
