@@ -24,10 +24,10 @@ const (
 )
 
 type store struct {
-	lookup map[string][]byte
-	timeouts []time.Time
-	keys []string
-	sizes []int
+	lookup    map[string][]byte
+	timeouts  []time.Time
+	keys      []string
+	sizes     []int
 	totalSize int
 }
 
@@ -234,10 +234,10 @@ func genSlug() string {
 	return string(b)
 }
 
-func (s *store) clearSpace(dataSize int)  {
+func (s *store) clearSpace(dataSize int) {
 	delCount := 0
 	delSize := 0
-	for maxStorageSize < float64(s.totalSize - delSize + dataSize) / 1000000 {
+	for maxStorageSize < float64(s.totalSize-delSize+dataSize)/1000000 {
 		delSize += s.sizes[delCount]
 		delCount++
 	}
