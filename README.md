@@ -137,3 +137,6 @@ A couple of properties can be set via environment variables:
 | BUCKETS_SEED             | Mostly for debugging. Seed is used for generating the location of new buckets. Default is current time.                                                                                                                                                                 |
 
 If you want to use TLS/SSL or want to constrain the size of a bucket I'd suggest using nginx with proxy_pass.
+
+## Screenshot
+![](https://github.com/sellleon/buckets/blob/master/buckets-screenshot.png)
