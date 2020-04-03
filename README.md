@@ -113,13 +113,13 @@ docker image build -t buckets:0.1 .
 run docker:
 
 ```bash
-usr/bin/docker run --rm --name=buckets -p 8080:8080 buckets:0.1
+docker run --rm --name=buckets -p 8080:8080 buckets:0.1
 ```
 
 or run docker with some environment variables (time to live 2 days, store a maximum of 20 buckets):
 
 ```bash
-usr/bin/docker run --rm --name=buckets -p 8080:8080 --env BUCKETS_TTL=172800 --env BUCKETS_MAX_BUCKETS=20 buckets:0.1
+docker run --rm --name=buckets -p 8080:8080 --env BUCKETS_TTL=172800 --env BUCKETS_MAX_BUCKETS=20 buckets:0.1
 ```
 
 ## Configuration
