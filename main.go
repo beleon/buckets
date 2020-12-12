@@ -43,6 +43,7 @@ type setWithPath struct {
 
 var baseUrl string = "http://localhost:8080"
 var charset = "abcdefghijklmnopqrstuvwxyz"
+var authToken = ""
 var ttl = 172800 //Time to live in seconds, 0 means unlimited, default: 2 days
 var maxBuckets = 1000
 var slugSize = 4
@@ -86,6 +87,14 @@ func makeHandler(request chan storeOp, response chan storeOp) func(http.Response
 		}
 		indexHtml = string(indexHtmlFile)
 		indexHtml = strings.ReplaceAll(indexHtml, "{{baseurl}}", baseUrl)
+		if authToken == "" {
+			start := strings.Index(indexHtml, "{{{auth")
+			end := strings.Index(indexHtml, "auth}}}") + 7
+			indexHtml = indexHtml[:start] + indexHtml[end:]
+		} else {
+			indexHtml = strings.ReplaceAll(indexHtml, "{{{auth", "")
+			indexHtml = strings.ReplaceAll(indexHtml, "auth}}}", "")
+		}
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -120,21 +129,38 @@ func makeHandler(request chan storeOp, response chan storeOp) func(http.Response
 				log.Println(err)
 				w.WriteHeader(http.StatusInternalServerError)
 			} else {
-				storeMutex.Lock()
-				if path != "" {
-					request <- storeOp{storeSetWithPath, setWithPath{path, bytes}}
-				} else {
-					request <- storeOp{storeSet, bytes}
-				}
-				op := <-response
-				storeMutex.Unlock()
-				if op.method == storeTooLarge {
-					w.WriteHeader(http.StatusRequestEntityTooLarge)
-				} else {
-					_, err := w.Write([]byte(baseUrl + "/" + op.body.(string) + "\n"))
-					if err != nil {
-						log.Println(err)
+				authed := false
+				if authToken != "" {
+					if strings.HasPrefix(path, authToken) {
+						authed = true
+						path = path[len(authToken):]
+						if strings.HasPrefix(path, "/") {
+							path = path[1:]
+						}
 					}
+				} else {
+					authed = true;
+				}
+				if authed {
+					storeMutex.Lock()
+					if path != "" {
+						request <- storeOp{storeSetWithPath, setWithPath{path, bytes}}
+					} else {
+						request <- storeOp{storeSet, bytes}
+					}
+					op := <-response
+					storeMutex.Unlock()
+					if op.method == storeTooLarge {
+						w.WriteHeader(http.StatusRequestEntityTooLarge)
+					} else {
+						_, err := w.Write([]byte(baseUrl + "/" + op.body.(string) + "\n"))
+						if err != nil {
+							log.Println(err)
+						}
+					}
+				} else {
+					log.Println("unauthorized access POST attempt")
+					w.WriteHeader(http.StatusUnauthorized)
 				}
 			}
 		} else if r.Method == http.MethodDelete {
@@ -308,6 +334,10 @@ func loadEnv() {
 	val = os.Getenv("BUCKETS_CHARSET")
 	if val != "" {
 		charset = val
+	}
+	val = os.Getenv("BUCKETS_AUTH_TOKEN")
+	if val != "" {
+		authToken = val
 	}
 	loadIntEnv("BUCKETS_TTL", &ttl)
 	loadIntEnv("BUCKETS_MAX_BUCKETS", &maxBuckets)

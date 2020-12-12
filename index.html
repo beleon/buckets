@@ -360,6 +360,10 @@
     <header>
         <h1><img style="width: 55px" class="buckets_logo"></img> Buckets</h1>
         <p>
+        {{{auth<label for="auth_token"> Enter Auth Token<br>
+            <textarea id="auth_token" rows="1" style="height:1.4rem;resize: none;white-space: nowrap;" placeholder="Auth Token"></textarea>
+        </label>auth}}}
+            <br>
         <label for="text_data">Enter text or upload file. Stored data may disappear after a while.
             <textarea id="text_data" placeholder="Enter some text here..." autofocus></textarea>
         </label>
@@ -513,6 +517,11 @@ function showLoadingDialog() {
 
 function sendData(data) {
     window.bucketActivated = true;
+    let path = "";
+    let authTokenEl = document.getElementById("auth_token");
+    if (authTokenEl) {
+        path = authTokenEl.value.replace(/(\r\n|\n|\r)/gm, "");
+    }
     let xhttp = new XMLHttpRequest();
     xhttp.onreadystatechange = function() {
         if (this.readyState === 4) {
@@ -527,7 +536,7 @@ function sendData(data) {
             }
         }
     };
-    xhttp.open("POST", "", true);
+    xhttp.open("POST", path, true);
     xhttp.send(data);
 }
 </script>
