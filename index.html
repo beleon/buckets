@@ -174,6 +174,13 @@
         pointer-events: none;
     }
     #dropOverlay.active { display: flex; }
+
+    /* Phones: brand and filename get their own rows, buttons share one. */
+    @media (max-width: 600px) {
+        .brand { width: 100%; }
+        #name { margin-left: 0; width: 100%; }
+        #share, #upload { flex: 1; }
+    }
 </style>
 </head>
 <body>
