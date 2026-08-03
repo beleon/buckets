@@ -11,6 +11,10 @@ $ curl --data "Hello, World" http://localhost:8080/hello.txt
 http://localhost:8080/ky8tex25rD8/hello.txt
 ```
 
+Or use the web UI:
+
+![The buckets web UI](screenshot.png)
+
 ## API
 
 | Action   | Request                                | Notes                                        |
@@ -63,3 +67,8 @@ embedded). The server shuts down gracefully on SIGTERM. Memory budget:
 ```bash
 go test ./...
 ```
+
+## License
+
+MIT, see [LICENSE](LICENSE). The code was created with the help of
+[Claude Code](https://claude.com/claude-code).
