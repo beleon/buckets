@@ -4,11 +4,304 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Buckets</title>
+<meta name="description" content="Tiny in-memory pastebin. Share text or files, gone after 24 hours.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🪣</text></svg>">
+<style>
+    :root {
+        --bg: #f6f4ef;
+        --card: #ffffff;
+        --ink: #24221d;
+        --muted: #7a756c;
+        --line: #e2ddd2;
+        --accent: #c2410c;
+        --accent-ink: #ffffff;
+        --code-bg: #efece4;
+        --err: #b91c1c;
+        --shadow: 0 6px 24px rgba(40, 30, 10, .18);
+    }
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --bg: #15140f;
+            --card: #201e18;
+            --ink: #eae7de;
+            --muted: #948f83;
+            --line: #37342b;
+            --accent: #e8763a;
+            --accent-ink: #201007;
+            --code-bg: #2a2820;
+            --err: #f87171;
+            --shadow: 0 6px 24px rgba(0, 0, 0, .5);
+        }
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        background: var(--bg);
+        color: var(--ink);
+        font: 15px/1.5 system-ui, sans-serif;
+    }
+
+    header {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: .5rem;
+        padding: .5rem .9rem;
+        background: var(--card);
+        border-bottom: 1px solid var(--line);
+    }
+    .brand { font-size: 1.05rem; font-weight: 700; letter-spacing: -.01em; white-space: nowrap; }
+    .brand small { font-weight: 400; color: var(--muted); margin-left: .6rem; }
+    #name {
+        margin-left: auto;
+        width: 15rem;
+        max-width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--bg);
+        color: inherit;
+        padding: .4rem .7rem;
+        font: inherit;
+        font-size: .85rem;
+    }
+    #name:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+    button {
+        border: 1px solid transparent;
+        border-radius: 6px;
+        padding: .4rem 1rem;
+        font: inherit;
+        font-size: .85rem;
+        font-weight: 600;
+        background: var(--accent);
+        color: var(--accent-ink);
+        cursor: pointer;
+        white-space: nowrap;
+    }
+    button:hover { filter: brightness(1.08); }
+    button.ghost { background: transparent; color: var(--ink); border-color: var(--line); }
+    button.ghost:hover { border-color: var(--accent); color: var(--accent); filter: none; }
+    #helpBtn { padding: .4rem .75rem; border-radius: 50%; }
+
+    #text {
+        flex: 1;
+        width: 100%;
+        border: none;
+        resize: none;
+        padding: 1.1rem 1.25rem;
+        background: var(--bg);
+        color: var(--ink);
+        font: 14px/1.6 ui-monospace, monospace;
+    }
+    #text:focus { outline: none; }
+
+    #result {
+        position: fixed;
+        left: 50%;
+        bottom: 1.4rem;
+        transform: translateX(-50%);
+        display: flex;
+        align-items: center;
+        gap: .9rem;
+        max-width: min(92vw, 46rem);
+        padding: .7rem 1.1rem;
+        background: var(--card);
+        border: 1px solid var(--accent);
+        border-radius: 10px;
+        box-shadow: var(--shadow);
+        word-break: break-all;
+        font-size: .9rem;
+    }
+    #result[hidden] { display: none; }
+    #result a { color: var(--accent); font-family: ui-monospace, monospace; }
+    #result.error { border-color: var(--err); color: var(--err); }
+    #result button { flex-shrink: 0; padding: .25rem .7rem; font-size: .8rem; }
+    #result .copy { background: transparent; color: var(--accent); border-color: var(--accent); }
+    #result .close { background: transparent; color: var(--muted); border-color: transparent; padding: .25rem .3rem; }
+    #result .close:hover { color: var(--ink); filter: none; }
+
+    #help {
+        position: fixed;
+        top: 0;
+        right: 0;
+        height: 100%;
+        width: min(27rem, 100vw);
+        background: var(--card);
+        border-left: 1px solid var(--line);
+        box-shadow: var(--shadow);
+        padding: 1.1rem 1.4rem 2rem;
+        overflow-y: auto;
+        transform: translateX(102%);
+        transition: transform .18s ease;
+    }
+    #help.open { transform: none; }
+    #help .head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+    #help h2 { font-size: 1rem; margin: 0; }
+    #help h3 {
+        font-size: .75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: .09em;
+        color: var(--muted);
+        margin: 1.4rem 0 .4rem;
+    }
+    #help code {
+        display: block;
+        background: var(--code-bg);
+        border-radius: 6px;
+        padding: .45rem .7rem;
+        font: 12px/1.5 ui-monospace, monospace;
+        overflow-x: auto;
+        white-space: nowrap;
+    }
+    #help p { color: var(--muted); font-size: .85rem; margin: .5rem 0; }
+    #help p code { display: inline; padding: .05rem .3rem; font-size: .78rem; white-space: normal; }
+
+    #dropOverlay {
+        position: fixed;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        background: color-mix(in srgb, var(--bg) 60%, transparent);
+        backdrop-filter: blur(2px);
+        border: 3px dashed var(--accent);
+        color: var(--accent);
+        font-size: 1.6rem;
+        font-weight: 700;
+        pointer-events: none;
+    }
+    #dropOverlay.active { display: flex; }
+</style>
 </head>
 <body>
-<h1>🪣 buckets</h1>
-<p>Tiny in-memory pastebin. Share a file with curl:</p>
-<pre>curl --data-binary @notes.txt http://this-host/notes.txt</pre>
-<p>The response is the bucket URL. Buckets expire after 24 hours.</p>
+
+<header>
+    <div class="brand">🪣 buckets<small>in-memory · gone in 24 h</small></div>
+    <input type="text" id="name" placeholder="filename (optional)">
+    <button id="share">Share text</button>
+    <button id="upload" class="ghost">Upload file</button>
+    <button id="helpBtn" class="ghost" aria-label="API help">?</button>
+    <input type="file" id="file" hidden>
+</header>
+
+<textarea id="text" placeholder="Type here and hit Share (Ctrl+Enter), paste an image, or drop a file anywhere." autofocus></textarea>
+
+<div id="result" hidden></div>
+
+<aside id="help">
+    <div class="head">
+        <h2>Using buckets with curl</h2>
+        <button class="ghost" id="helpClose">close</button>
+    </div>
+    <h3>share</h3>
+    <code>curl --data-binary @notes.txt <span class="origin"></span>/notes.txt</code>
+    <p>POST the data to <code>/&lt;filename&gt;</code>; the response is the bucket URL.</p>
+    <h3>fetch</h3>
+    <code>curl <span class="origin"></span>/&lt;slug&gt;/notes.txt</code>
+    <p>Content type is detected at upload and set on delivery. Range and HEAD work.</p>
+    <h3>replace</h3>
+    <code>curl --data-binary @notes.txt <span class="origin"></span>/&lt;slug&gt;/notes.txt</code>
+    <p>Needs the full existing path: slug <em>and</em> filename. Resets the 24&nbsp;h clock.</p>
+    <h3>delete</h3>
+    <code>curl -X DELETE <span class="origin"></span>/&lt;slug&gt;/notes.txt</code>
+    <h3>rules</h3>
+    <p>In the browser: Ctrl+Enter shares the text, pasting an image or dropping a file uploads it.</p>
+    <p>Filenames: <code>A-Z a-z 0-9 . _ -</code>, max 255 chars, no leading dash.</p>
+    <p>Limits: 500&nbsp;MB per upload and in total; oldest buckets are evicted first. 6 uploads per minute.</p>
+    <p>Everything lives in memory; nothing survives a restart.</p>
+</aside>
+
+<div id="dropOverlay">drop to share</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const result = $("result");
+
+for (const el of document.querySelectorAll(".origin")) el.textContent = location.origin;
+
+function randomName() {
+    let s = "";
+    for (const b of crypto.getRandomValues(new Uint8Array(6))) s += "abcdefghijklmnopqrstuvwxyz"[b % 26];
+    return s + ".txt";
+}
+
+function sanitize(name) {
+    name = name.replace(/[^A-Za-z0-9._-]/g, "_").replace(/^-+/, "").slice(0, 255);
+    return !name || name === "." || name === ".." ? randomName() : name;
+}
+
+// navigator.clipboard only exists in secure contexts; this service runs on
+// plain HTTP, so fall back to select-and-copy elsewhere.
+function copyText(text) {
+    if (navigator.clipboard) return navigator.clipboard.writeText(text).catch(() => {});
+    const ta = Object.assign(document.createElement("textarea"), { value: text });
+    document.body.append(ta);
+    ta.select();
+    document.execCommand("copy");
+    ta.remove();
+}
+
+function show(content, isError) {
+    result.hidden = false;
+    result.classList.toggle("error", !!isError);
+    const close = Object.assign(document.createElement("button"), { textContent: "✕", className: "close" });
+    close.onclick = () => { result.hidden = true; };
+    result.replaceChildren(...(Array.isArray(content) ? content : [document.createTextNode(content)]), close);
+}
+
+async function share(name, body) {
+    show("Uploading…");
+    try {
+        const res = await fetch("/" + name, { method: "POST", body });
+        const text = (await res.text()).trim();
+        if (!res.ok) return show(`Error ${res.status}: ${text}`, true);
+        const a = Object.assign(document.createElement("a"), { href: text, textContent: text });
+        const copy = Object.assign(document.createElement("button"), { textContent: "copy", className: "copy" });
+        copy.onclick = () => { copyText(text); copy.textContent = "copied"; };
+        show([a, copy]);
+    } catch (e) {
+        show("Upload failed: " + e, true);
+    }
+}
+
+function shareFile(file) {
+    if (file) share(sanitize($("name").value.trim() || file.name), file);
+}
+
+$("share").onclick = () => {
+    const typed = $("name").value.trim();
+    share(typed ? sanitize(typed) : randomName(), $("text").value);
+};
+$("upload").onclick = () => $("file").click();
+$("file").onchange = () => { shareFile($("file").files[0]); $("file").value = ""; };
+
+$("helpBtn").onclick = () => $("help").classList.toggle("open");
+$("helpClose").onclick = () => $("help").classList.remove("open");
+document.addEventListener("keydown", e => { if (e.key === "Escape") $("help").classList.remove("open"); });
+
+$("text").addEventListener("keydown", e => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $("share").click(); }
+});
+
+// Pasting a file (e.g. a screenshot from the clipboard) uploads it directly.
+document.addEventListener("paste", e => {
+    const file = e.clipboardData && e.clipboardData.files[0];
+    if (file) { e.preventDefault(); shareFile(file); }
+});
+
+let dragDepth = 0;
+document.addEventListener("dragenter", e => { e.preventDefault(); dragDepth++; $("dropOverlay").classList.add("active"); });
+document.addEventListener("dragover", e => e.preventDefault());
+document.addEventListener("dragleave", () => { if (--dragDepth <= 0) { dragDepth = 0; $("dropOverlay").classList.remove("active"); } });
+document.addEventListener("drop", e => {
+    e.preventDefault();
+    dragDepth = 0;
+    $("dropOverlay").classList.remove("active");
+    shareFile(e.dataTransfer.files[0]);
+});
+</script>
 </body>
 </html>
