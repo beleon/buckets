@@ -1,11 +1,11 @@
 # 🪣 Buckets v2
 
-A tiny in-memory pastebin with curl support, successor to
-[beleon/buckets](https://github.com/beleon/buckets). One Go file, stdlib only,
-one embedded HTML page, zero configuration.
+A tiny in-memory pastebin with curl support, and a from-scratch rewrite of the
+v1 line (preserved in this repository at the `v1-final` tag). One Go file,
+stdlib only, one embedded HTML page, zero configuration.
 
-Hosted at [github.com/beleon/buckets-v2](https://github.com/beleon/buckets-v2)
-and [codefloe.com/beleon/buckets-v2](https://codefloe.com/beleon/buckets-v2).
+Hosted at [github.com/beleon/buckets](https://github.com/beleon/buckets)
+and [codefloe.com/beleon/buckets](https://codefloe.com/beleon/buckets).
 
 Share text or files from any machine:
 
