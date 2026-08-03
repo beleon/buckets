@@ -51,7 +51,7 @@ Filenames must be POSIX portable: 1–255 chars of `A-Z a-z 0-9 . _ -`, not
 ## Build & run
 
 ```bash
-go build && ./buckets-v2
+go build && ./buckets
 ```
 
 ### Docker

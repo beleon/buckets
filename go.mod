@@ -1,3 +1,3 @@
-module github.com/beleon/buckets-v2
+module github.com/beleon/buckets
 
 go 1.23
