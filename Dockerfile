@@ -1,15 +1,10 @@
-FROM golang:alpine AS bucketsbuilder
-
-RUN apk add --no-cache musl-dev gcc
-WORKDIR /go/src/github.com/sellleon/buckets
-COPY main.go .
-RUN go mod init
-RUN go build -ldflags "-linkmode external -extldflags -static"
+FROM golang:1.26-alpine AS build
+WORKDIR /src
+COPY go.mod main.go index.html ./
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /buckets .
 
 FROM scratch
-WORKDIR /app/
-COPY index.html .
-COPY --from=bucketsbuilder /go/src/github.com/sellleon/buckets/buckets .
-
+COPY --from=build /buckets /buckets
+USER 65534:65534
 EXPOSE 8080
-ENTRYPOINT ["/app/buckets"]
+ENTRYPOINT ["/buckets"]

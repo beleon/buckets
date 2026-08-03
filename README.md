@@ -1,142 +1,77 @@
-# <img src="https://github.com/sellleon/buckets/raw/master/logo.png" width="25px"/> Buckets
-[![Go Report Card](https://goreportcard.com/badge/github.com/sellleon/buckets)](https://goreportcard.com/report/github.com/sellleon/buckets)
-[![MIT license](https://img.shields.io/badge/license-MIT-brightgreen.svg)](https://github.com/sellleon/buckets/blob/master/LICENSE)
+# 🪣 Buckets v2
 
-A tiny and fast in-memory pastbin with curl support. Buckets is a ~350 lines single file go project with no dependencies which
-serves a single file HTML page with no dependencies using only vanilla javascript. The services can be hosted via
-docker and accessed using simple curl commands. It has no means of authentication and stores all data in memory; no 
-databases.
+A tiny in-memory pastebin with curl support, successor to
+[beleon/buckets](https://github.com/beleon/buckets). One Go file, stdlib only,
+one embedded HTML page, zero configuration.
 
-## Usage
+Hosted at [github.com/beleon/buckets-v2](https://github.com/beleon/buckets-v2)
+and [codefloe.com/beleon/buckets-v2](https://codefloe.com/beleon/buckets-v2).
 
-Either open your browser at `http://localhost:8080` or use the API directly:
-
-### Storing Buckets
-To store a bucket send a POST request to `http://localhost:8080` with the message or file as the request body. Storing
-a message with curl would look like this:
+Share text or files from any machine:
 
 ```bash
-curl -X POST --data "Hello, World" http://localhost:8080
+$ curl --data "Hello, World" http://localhost:8080/hello.txt
+http://localhost:8080/ky8tex25rD8/hello.txt
 ```
 
-A file upload would look like this:
+Or use the web UI:
+
+![The buckets web UI](screenshot.png)
+
+## API
+
+| Action   | Request                                | Notes                                        |
+|----------|----------------------------------------|----------------------------------------------|
+| Upload   | `POST /<filename>` with body           | Returns the bucket URL (`/<slug>/<filename>`) |
+| Download | `GET /<slug>/<filename>`               | Correct `Content-Type`, ranges, `HEAD`       |
+| Replace  | `POST /<slug>/<filename>` with body    | Full path must match exactly; resets the TTL |
+| Delete   | `DELETE /<slug>/<filename>`            |                                              |
+
+`GET /<slug>` redirects to the bucket's full path. `GET /` serves the web UI.
+
+Filenames must be POSIX portable: 1–255 chars of `A-Z a-z 0-9 . _ -`, not
+`.` or `..`, no leading `-`.
+
+## Opinions (all hardcoded)
+
+- **Port 8080**, plain HTTP. Put a reverse proxy in front for TLS.
+- **24h TTL.** Replacing a bucket resets its clock.
+- **500 MB max upload**, rejected while streaming with 413.
+- **500 MB total storage.** When full, the oldest buckets are evicted.
+- **Rate limits:** 6 POSTs/min, 60 requests/min for everything else (global,
+  returns 429).
+- **Slugs:** 48 bits from `crypto/rand`, 8 base64url chars. Guessing a
+  bucket needs its filename too, and at the maximum rate the rate limit
+  allows, the chance of hitting one bucket within its lifetime is about
+  1 in 1.5 billion.
+- **All in memory.** No disk, no database, nothing survives a restart.
+- **Zero config.** URLs are derived from the request's `Host` header (and
+  `X-Forwarded-Proto` if set). There are no environment variables.
+
+## Build & run
 
 ```bash
-curl -X POST --data-binary @path/to/file http://localhost:8080
-```
-
-The response is the URL where your data is stored at. E.g. `http://localhost:8080/shbo`
-
-You can also store a bucket at a location of your choice by sending a POST request to that location:
-
-```bash
-curl -X POST --data-binary @path/to/file http://localhost:8080/my/custom/bucket/location
-```
-
-Now your bucket is stored at `http://localhost:8080/my/custom/bucket/location`.
-
-WARNING: This will replace any data that was stored at this location before.
-
-### Retrieving Buckets
-Simply send a GET request to the URL your bucket is stored at. E.g. through opening the address in your
-browser or using curl:
-
-```bash
-curl http://localhost:8080/shbo
-```
-
-If your bucket stores binary data you can save the data into a file using:
-
-```bash
-curl -o path/to/savefile http://localhost:8080/shbo
-```
-
-### Deleting Buckets
-To delete a bucket send a DELETE request to the URL your bucket is stored at. E.g. using curl:
-
-```bash
-curl -X DELETE http://localhost:8080/shbo
-```
-
-## Setup
-
-### Build Project
-
-Working go installation and git needed.
-
-clone project:
-
-```bash
-git clone https://github.com/sellleon/buckets
-```
-
-change into project dir:
-
-```bash
-cd buckets
-```
-
-build project:
-
-```bash
-go build
-```
-
-run:
-
-```bash
-./buckets
+go build && ./buckets-v2
 ```
 
 ### Docker
 
-Working docker installation and git needed.
-
-clone project:
-
 ```bash
-git clone https://github.com/sellleon/buckets
+docker build -t buckets .
+docker run --rm -p 8080:8080 --memory 1.5g buckets
 ```
 
-change into project dir:
+The image is `FROM scratch` with a single static binary (the web UI is
+embedded). The server shuts down gracefully on SIGTERM. Memory budget:
+500 MB store + in-flight upload bodies, so ~1.5 GB is a safe container limit.
+
+## Test
 
 ```bash
-cd buckets
+go test ./...
 ```
 
-build docker image:
+## License
 
-```bash
-docker image build -t buckets:0.1 .
-```
-
-run docker:
-
-```bash
-docker run --rm --name=buckets -p 8080:8080 buckets:0.1
-```
-
-or run docker with some environment variables (time to live 2 days, store a maximum of 20 buckets):
-
-```bash
-docker run --rm --name=buckets -p 8080:8080 --env BUCKETS_TTL=172800 --env BUCKETS_MAX_BUCKETS=20 buckets:0.1
-```
-
-## Configuration
-
-A couple of properties can be set via environment variables:
-
-| Env Name                 |  Description                                                                                                                                                                                                                                                            |
-|--------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| BUCKETS_BASE_URL         | URL location of your service. Default `http://localhost:8080`. Used for generating links of buckets and for the HTML page.                                                                                                                                              |
-| BUCKETS_TTL              | A bucket's time to live. Determines how long a bucket will be stored. Default is 2 days. Use 0 for indefinite storage of buckets.                                                                                                                                       |
-| BUCKETS_MAX_STORAGE_SIZE | Maximum size that the sum of all buckets can have in MB (i.e. 1000000 bytes) as a float64 value. Oldest buckets will be delete until enough free space is available if new bucket would cause the storage size to be larger than the MAX_STORAGE_SIZE. Default is 1000. |
-| BUCKETS_MAX_BUCKETS      | Maximum amount of buckets that can be stored at once. Oldest bucket will be deleted when inserting new bucket when maximum number of buckets is reached. Default is 1000.                                                                                               |
-| BUCKETS_CHARSET          | The character set that will be used to generate the location of the buckets. Default is a-z.                                                                                                                                                                            |
-| BUCKETS_SLUG_SIZE        | Length of the generated bucket location. Default is 4.                                                                                                                                                                                                                  |
-| BUCKETS_SEED             | Mostly for debugging. Seed is used for generating the location of new buckets. Default is current time.                                                                                                                                                                 |
-
-If you want to use TLS/SSL or want to constrain the size of a bucket I'd suggest using nginx with proxy_pass.
-
-## Screenshot
-![](https://github.com/sellleon/buckets/blob/master/buckets-screenshot.png)
+MIT, see [LICENSE](LICENSE). The code was created with the help of
+[Claude Code](https://claude.com/claude-code).

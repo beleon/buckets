@@ -1,378 +1,396 @@
+// Buckets is a tiny in-memory pastebin with curl support.
+//
+// Everything is opinionated and hardcoded: port 8080, 24h TTL, 500 MB max
+// body, 500 MB total storage (oldest evicted first), 6 uploads/min, 60
+// requests/min for everything else. No auth, no TLS, no disk, no config.
 package main
 
 import (
+	"bytes"
+	"context"
+	"crypto/rand"
+	_ "embed"
+	"encoding/base64"
+	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
-	"math/rand"
+	"mime"
 	"net/http"
 	"os"
-	"strconv"
-	"strings"
+	"os/signal"
+	"path"
 	"sync"
+	"syscall"
 	"time"
 )
 
+//go:embed index.html
+var indexHTML []byte
+
 const (
-	storeGet = iota
-	storeDelete
-	storeSetWithPath
-	storeSet
-	storeTooLarge
-	storePresent
-	storeNotPresent
+	addr            = ":8080"
+	defaultTTL      = 24 * time.Hour
+	defaultMaxBody  = 500 * 1000 * 1000 // per upload
+	defaultMaxStore = 500 * 1000 * 1000 // across all buckets
+	// 48 bits -> 8 base64url chars. Sized for the personal-use threat
+	// model: guessing one bucket at the rate limit (1 req/s) for 50h has
+	// a ~1 in 1.5 billion chance, and a guess also needs the filename.
+	slugBytes         = 6
+	uploadsPerMinute  = 6
+	requestsPerMinute = 60
 )
 
+// file is immutable once stored; replacing creates a new value.
+type file struct {
+	slug        string
+	name        string
+	data        []byte
+	contentType string
+	uploaded    time.Time
+	expires     time.Time
+}
+
+// store holds all buckets in memory. order is sorted by expiry (earliest
+// first), which equals insertion order because the TTL is uniform and a
+// replace re-inserts at the back.
 type store struct {
-	lookup    map[string][]byte
-	timeouts  []time.Time
-	keys      []string
-	sizes     []int
-	totalSize int
+	mu       sync.Mutex
+	ttl      time.Duration
+	maxBytes int
+	files    map[string]*file // keyed by slug
+	order    []*file
+	total    int
 }
 
-type storeOp struct {
-	method int
-	body   interface{}
+func newStore(ttl time.Duration, maxBytes int) *store {
+	return &store{ttl: ttl, maxBytes: maxBytes, files: make(map[string]*file)}
 }
 
-type setWithPath struct {
-	path string
-	body []byte
-}
-
-var baseUrl string = "http://localhost:8080"
-var charset = "abcdefghijklmnopqrstuvwxyz"
-var authToken = ""
-var ttl = 172800 //Time to live in seconds, 0 means unlimited, default: 2 days
-var maxBuckets = 1000
-var slugSize = 4
-var seededRand *rand.Rand = rand.New(rand.NewSource(time.Now().UnixNano()))
-var maxStorageSize float64 = 1000 //in MB (i.e. 1000000 bytes)
-
-var storeMutex sync.Mutex
-
-func main() {
-	loadEnv()
-
-	if slowIntPow(len(charset), slugSize) < maxBuckets {
-		log.Panic("slug size and charset too small for max number of buckets")
-	}
-
-	req := make(chan storeOp)
-	resp := make(chan storeOp)
-	go manageStore(req, resp)
-
-	http.HandleFunc("/", makeHandler(req, resp))
-	err := http.ListenAndServe(":8080", nil)
-	if err != nil {
-		log.Panic(err)
+func (s *store) purgeLocked(now time.Time) {
+	for len(s.order) > 0 && !s.order[0].expires.After(now) {
+		s.removeLocked(s.order[0])
 	}
 }
 
-func makeHandler(request chan storeOp, response chan storeOp) func(http.ResponseWriter, *http.Request) {
-	indexHtml := ""
-	{
-		file, err := os.Open("index.html")
-		if err != nil {
-			log.Panic(err)
-		}
-		indexHtmlFile, err := ioutil.ReadAll(file)
-		if err != nil {
-			log.Panic(err)
-		}
-		err = file.Close()
-		if err != nil {
-			log.Println(err)
-		}
-		indexHtml = string(indexHtmlFile)
-		indexHtml = strings.ReplaceAll(indexHtml, "{{baseurl}}", baseUrl)
-		if authToken == "" {
-			start := strings.Index(indexHtml, "{{{auth")
-			end := strings.Index(indexHtml, "auth}}}") + 7
-			indexHtml = indexHtml[:start] + indexHtml[end:]
-		} else {
-			indexHtml = strings.ReplaceAll(indexHtml, "{{{auth", "")
-			indexHtml = strings.ReplaceAll(indexHtml, "auth}}}", "")
-		}
-	}
-
-	return func(w http.ResponseWriter, r *http.Request) {
-		path := ""
-		if len(r.URL.Path) > 0 {
-			path = r.URL.Path[1:]
-		}
-		if r.Method == http.MethodGet {
-			if path == "" {
-				_, err := w.Write([]byte(indexHtml))
-				if err != nil {
-					log.Println(err)
-				}
-			} else {
-				storeMutex.Lock()
-				request <- storeOp{storeGet, path}
-				op := <-response
-				storeMutex.Unlock()
-				if op.method == storePresent {
-					w.Header().Set("content-length", strconv.Itoa(len(op.body.([]byte))))
-					_, err := w.Write(op.body.([]byte))
-					if err != nil {
-						log.Println(err)
-					}
-				} else {
-					w.WriteHeader(http.StatusNotFound)
-				}
-			}
-		} else if r.Method == http.MethodPost {
-			bytes, err := ioutil.ReadAll(r.Body)
-			if err != nil {
-				log.Println(err)
-				w.WriteHeader(http.StatusInternalServerError)
-			} else {
-				authed := false
-				if authToken != "" {
-					if strings.HasPrefix(path, authToken) {
-						authed = true
-						path = path[len(authToken):]
-						if strings.HasPrefix(path, "/") {
-							path = path[1:]
-						}
-					}
-				} else {
-					authed = true;
-				}
-				if authed {
-					storeMutex.Lock()
-					if path != "" {
-						request <- storeOp{storeSetWithPath, setWithPath{path, bytes}}
-					} else {
-						request <- storeOp{storeSet, bytes}
-					}
-					op := <-response
-					storeMutex.Unlock()
-					if op.method == storeTooLarge {
-						w.WriteHeader(http.StatusRequestEntityTooLarge)
-					} else {
-						_, err := w.Write([]byte(baseUrl + "/" + op.body.(string) + "\n"))
-						if err != nil {
-							log.Println(err)
-						}
-					}
-				} else {
-					log.Println("unauthorized access POST attempt")
-					w.WriteHeader(http.StatusUnauthorized)
-				}
-			}
-		} else if r.Method == http.MethodDelete {
-			storeMutex.Lock()
-			request <- storeOp{storeDelete, path}
-			op := <-response
-			storeMutex.Unlock()
-			if op.method == storeNotPresent {
-				w.WriteHeader(http.StatusNotFound)
-			}
-		} else {
-			w.WriteHeader(http.StatusBadRequest)
-		}
-	}
-}
-
-func manageStore(request chan storeOp, response chan storeOp) {
-	s := store{make(map[string][]byte), make([]time.Time, 0), make([]string, 0), make([]int, 0), 0}
-
-	for true {
-		timeout := time.Duration(1<<63 - 1) //never timeout
-		for len(s.timeouts) > 0 {
-			now := time.Now()
-			if s.timeouts[0].Before(now) || s.timeouts[0].Equal(now) {
-				s.deleteFirstN(1)
-				continue
-			}
-			timeout = s.timeouts[0].Sub(now)
+func (s *store) removeLocked(f *file) {
+	delete(s.files, f.slug)
+	s.total -= len(f.data)
+	for i, g := range s.order {
+		if g == f {
+			s.order = append(s.order[:i], s.order[i+1:]...)
 			break
 		}
+	}
+}
 
-		select {
-		case op := <-request:
-			if op.method == storeGet {
-				if val, ok := s.lookup[op.body.(string)]; ok {
-					response <- storeOp{storePresent, val}
-				} else {
-					response <- storeOp{storeNotPresent, nil}
-				}
-			} else if op.method == storeDelete {
-				if _, ok := s.lookup[op.body.(string)]; ok {
-					s.deleteKey(op.body.(string))
-					response <- storeOp{storePresent, nil}
-				} else {
-					response <- storeOp{storeNotPresent, nil}
-				}
-			} else if op.method == storeSetWithPath || op.method == storeSet {
-				path := ""
-				var body []byte
-				if op.method == storeSetWithPath {
-					path = op.body.(setWithPath).path
-					body = op.body.(setWithPath).body
-					if float64(len(body))/(1000000) > maxStorageSize {
-						response <- storeOp{storeTooLarge, nil}
-						break
-					}
-					if _, ok := s.lookup[path]; ok {
-						s.deleteKey(path)
-					}
-				} else {
-					retry := true
-					for retry {
-						path = genSlug()
-						_, retry = s.lookup[path]
-					}
-					body = op.body.([]byte)
-					if float64(len(body))/(1000000) > maxStorageSize {
-						response <- storeOp{storeTooLarge, nil}
-						break
-					}
-				}
-				s.clearSpace(len(body))
-				s.lookup[path] = body
-				s.keys = append(s.keys, path)
-				s.sizes = append(s.sizes, len(body))
-				s.totalSize += len(body)
-				if ttl == 0 {
-					s.timeouts = append(s.timeouts, time.Unix(1<<33-1, 0))
-				} else {
-					s.timeouts = append(s.timeouts, time.Now().Add(time.Duration(ttl)*time.Second))
-				}
-				response <- storeOp{storeSet, path}
-			} else {
-				log.Panicf("unknown store method: %d", op.method)
-			}
-		case <-time.After(timeout):
-			s.deleteFirstN(1)
+// evictLocked drops the oldest buckets until need more bytes fit under the cap.
+func (s *store) evictLocked(need int) {
+	for len(s.order) > 0 && s.total+need > s.maxBytes {
+		s.removeLocked(s.order[0])
+	}
+}
+
+func (s *store) insertLocked(f *file) {
+	s.files[f.slug] = f
+	s.order = append(s.order, f)
+	s.total += len(f.data)
+}
+
+func (s *store) put(name string, data []byte, contentType string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now()
+	s.purgeLocked(now)
+	s.evictLocked(len(data))
+	var slug string
+	for {
+		slug = genSlug()
+		if _, taken := s.files[slug]; !taken {
+			break
 		}
 	}
+	s.insertLocked(&file{slug, name, data, contentType, now, now.Add(s.ttl)})
+	return slug
+}
+
+// replace overwrites an existing bucket. The slug and filename must both
+// match; this is the only way to write to a chosen path, so slugs always
+// come from genSlug. Replacing resets the TTL.
+func (s *store) replace(slug, name string, data []byte, contentType string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now()
+	s.purgeLocked(now)
+	old, ok := s.files[slug]
+	if !ok || old.name != name {
+		return false
+	}
+	s.removeLocked(old)
+	s.evictLocked(len(data))
+	s.insertLocked(&file{slug, name, data, contentType, now, now.Add(s.ttl)})
+	return true
+}
+
+func (s *store) get(slug string) (*file, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.purgeLocked(time.Now())
+	f, ok := s.files[slug]
+	return f, ok
+}
+
+func (s *store) delete(slug, name string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.purgeLocked(time.Now())
+	f, ok := s.files[slug]
+	if !ok || f.name != name {
+		return false
+	}
+	s.removeLocked(f)
+	return true
 }
 
 func genSlug() string {
-	b := make([]byte, slugSize)
-	for i := range b {
-		b[i] = charset[seededRand.Intn(len(charset))]
+	b := make([]byte, slugBytes)
+	if _, err := rand.Read(b); err != nil {
+		log.Panicf("crypto/rand failed: %v", err)
 	}
-	return string(b)
+	return base64.RawURLEncoding.EncodeToString(b)
 }
 
-func (s *store) clearSpace(dataSize int) {
-	delCount := 0
-	delSize := 0
-	for maxStorageSize < float64(s.totalSize-delSize+dataSize)/1000000 {
-		delSize += s.sizes[delCount]
-		delCount++
-	}
-	if len(s.keys) == maxBuckets && delCount == 0 {
-		delCount = 1
-	}
-	s.deleteFirstN(delCount)
+// limiter is a global token bucket.
+type limiter struct {
+	mu     sync.Mutex
+	tokens float64
+	burst  float64
+	perSec float64
+	last   time.Time
 }
 
-func (s *store) deleteFirstN(n int) {
-	for i, key := range s.keys {
-		if i == n {
-			break
+func newLimiter(perMinute float64) *limiter {
+	return &limiter{tokens: perMinute, burst: perMinute, perSec: perMinute / 60, last: time.Now()}
+}
+
+func (l *limiter) allow() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	now := time.Now()
+	l.tokens = min(l.burst, l.tokens+now.Sub(l.last).Seconds()*l.perSec)
+	l.last = now
+	if l.tokens < 1 {
+		return false
+	}
+	l.tokens--
+	return true
+}
+
+type app struct {
+	store    *store
+	maxBody  int64
+	postLim  *limiter
+	otherLim *limiter
+}
+
+func newApp() *app {
+	return &app{
+		store:    newStore(defaultTTL, defaultMaxStore),
+		maxBody:  defaultMaxBody,
+		postLim:  newLimiter(uploadsPerMinute),
+		otherLim: newLimiter(requestsPerMinute),
+	}
+}
+
+func (a *app) handler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /{$}", a.index)
+	mux.HandleFunc("POST /{name}", a.upload)
+	mux.HandleFunc("POST /{slug}/{name}", a.replace)
+	mux.HandleFunc("GET /{slug}", a.redirect)
+	mux.HandleFunc("GET /{slug}/{name}", a.serve)
+	mux.HandleFunc("DELETE /{slug}/{name}", a.delete)
+	return a.rateLimit(mux)
+}
+
+func (a *app) rateLimit(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		lim := a.otherLim
+		if r.Method == http.MethodPost {
+			lim = a.postLim
 		}
-		s.totalSize -= s.sizes[i]
-		delete(s.lookup, key)
-	}
-
-	s.keys = s.keys[n:]
-	s.timeouts = s.timeouts[n:]
-	s.sizes = s.sizes[n:]
-}
-
-func (s *store) deleteKey(key string) {
-	ind := -1
-	for i, val := range s.keys {
-		if val == key {
-			ind = i
-			break
+		if !lim.allow() {
+			w.Header().Set("Retry-After", "10")
+			http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
+			return
 		}
-	}
-	if ind == -1 {
-		log.Panic("could not delete non existing key")
-	}
-
-	delete(s.lookup, key)
-	s.totalSize -= s.sizes[ind]
-
-	if ind == 0 {
-		s.keys = s.keys[1:]
-		s.timeouts = s.timeouts[1:]
-		s.sizes = s.sizes[1:]
-	} else {
-		copy(s.keys[ind:], s.keys[ind+1:])
-		s.keys = s.keys[:len(s.keys)-1]
-
-		copy(s.timeouts[ind:], s.timeouts[ind+1:])
-		s.timeouts = s.timeouts[:len(s.timeouts)-1]
-
-		copy(s.sizes[ind:], s.sizes[ind+1:])
-		s.sizes = s.sizes[:len(s.sizes)-1]
-	}
+		next.ServeHTTP(w, r)
+	})
 }
 
-func slowIntPow(x, y int) int {
-	res := 1
-	for i := 0; i < y; i++ {
-		res *= x
-	}
-	return res
+func (a *app) index(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write(indexHTML)
 }
 
-func loadEnv() {
-	val := os.Getenv("BUCKETS_BASE_URL")
-	if val != "" {
-		baseUrl = val
+func (a *app) upload(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if !validName(name) {
+		http.Error(w, "invalid filename: 1-255 chars of A-Za-z0-9._- with no leading '-'", http.StatusBadRequest)
+		return
 	}
-	val = os.Getenv("BUCKETS_CHARSET")
-	if val != "" {
-		charset = val
+	data, ok := a.readBody(w, r)
+	if !ok {
+		return
 	}
-	val = os.Getenv("BUCKETS_AUTH_TOKEN")
-	if val != "" {
-		authToken = val
-	}
-	loadIntEnv("BUCKETS_TTL", &ttl)
-	loadIntEnv("BUCKETS_MAX_BUCKETS", &maxBuckets)
-	loadIntEnv("BUCKETS_SLUG_SIZE", &slugSize)
-	seed := 0
-	if loadIntEnv("BUCKETS_SEED", &seed) {
-		seededRand = rand.New(rand.NewSource(int64(seed)))
-	}
-	loadFloat64Env("BUCKETS_MAX_STORAGE_SIZE", &maxStorageSize)
+	slug := a.store.put(name, data, detectContentType(name, data))
+	fmt.Fprintf(w, "%s/%s/%s\n", baseURL(r), slug, name)
 }
 
-func loadIntEnv(key string, target *int) bool {
-	val := os.Getenv(key)
-	if val != "" {
-		i, err := strconv.Atoi(val)
-		if err != nil {
-			log.Println(fmt.Errorf("erroring interpreting %s (%s) as int: %s", key, val, err.Error()))
+func (a *app) replace(w http.ResponseWriter, r *http.Request) {
+	slug, name := r.PathValue("slug"), r.PathValue("name")
+	data, ok := a.readBody(w, r)
+	if !ok {
+		return
+	}
+	if !a.store.replace(slug, name, data, detectContentType(name, data)) {
+		http.NotFound(w, r)
+		return
+	}
+	fmt.Fprintf(w, "%s/%s/%s\n", baseURL(r), slug, name)
+}
+
+func (a *app) serve(w http.ResponseWriter, r *http.Request) {
+	f, ok := a.store.get(r.PathValue("slug"))
+	if !ok || f.name != r.PathValue("name") {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", f.contentType)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	// Buckets are mutable (replace) and expire, so force revalidation.
+	// The ETag carries nanosecond precision; Last-Modified alone would
+	// serve stale 304s for replacements within the same second.
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Etag", fmt.Sprintf(`"%x-%x"`, f.uploaded.UnixNano(), len(f.data)))
+	http.ServeContent(w, r, "", f.uploaded, bytes.NewReader(f.data))
+}
+
+func (a *app) redirect(w http.ResponseWriter, r *http.Request) {
+	f, ok := a.store.get(r.PathValue("slug"))
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	http.Redirect(w, r, "/"+f.slug+"/"+f.name, http.StatusFound)
+}
+
+func (a *app) delete(w http.ResponseWriter, r *http.Request) {
+	if !a.store.delete(r.PathValue("slug"), r.PathValue("name")) {
+		http.NotFound(w, r)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *app) readBody(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
+	data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, a.maxBody))
+	if err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			http.Error(w, "body too large", http.StatusRequestEntityTooLarge)
 		} else {
-			*target = i
-			return true
+			http.Error(w, "error reading body", http.StatusBadRequest)
 		}
+		return nil, false
 	}
-	return false
+	return data, true
 }
 
-func loadFloat64Env(key string, target *float64) bool {
-	val := os.Getenv(key)
-	if val != "" {
-		i, err := strconv.ParseFloat(val, 64)
-		if err != nil {
-			log.Println(fmt.Errorf("erroring interpreting %s (%s) as float64: %s", key, val, err.Error()))
-		} else {
-			*target = i
-			return true
+// validName reports whether name is a POSIX portable filename: 1-255 bytes
+// of [A-Za-z0-9._-], not "." or "..", no leading '-'.
+func validName(name string) bool {
+	if len(name) == 0 || len(name) > 255 || name == "." || name == ".." || name[0] == '-' {
+		return false
+	}
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		if !('a' <= c && c <= 'z' || 'A' <= c && c <= 'Z' || '0' <= c && c <= '9' ||
+			c == '.' || c == '_' || c == '-') {
+			return false
 		}
 	}
-	return false
+	return true
+}
+
+// detectContentType picks the content type once at upload time: by
+// extension first, sniffed from the payload otherwise.
+func detectContentType(name string, data []byte) string {
+	if ct := mime.TypeByExtension(path.Ext(name)); ct != "" {
+		return ct
+	}
+	return http.DetectContentType(data)
+}
+
+// baseURL reconstructs the external URL from the request so no base-URL
+// configuration is needed.
+func baseURL(r *http.Request) string {
+	scheme := "http"
+	if p := r.Header.Get("X-Forwarded-Proto"); p != "" {
+		scheme = p
+	}
+	return scheme + "://" + r.Host
+}
+
+// janitor frees expired buckets between requests so a dead 500 MB upload
+// doesn't linger until the next hit.
+func (a *app) janitor(ctx context.Context) {
+	t := time.NewTicker(time.Minute)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			a.store.mu.Lock()
+			a.store.purgeLocked(time.Now())
+			a.store.mu.Unlock()
+		}
+	}
+}
+
+func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	a := newApp()
+	go a.janitor(ctx)
+
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: a.handler(),
+		// Together with the upload rate limit these bound how much memory
+		// stalled or malicious connections can hold: slow header attacks
+		// die in seconds, and a stalled 500 MB upload dies within
+		// ReadTimeout instead of buffering forever. 30 min still allows
+		// a max-size upload at ~300 KB/s.
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Minute,
+		IdleTimeout:       2 * time.Minute,
+	}
+	errc := make(chan error, 1)
+	go func() { errc <- srv.ListenAndServe() }()
+	log.Printf("buckets listening on %s", addr)
+
+	select {
+	case err := <-errc:
+		log.Fatal(err)
+	case <-ctx.Done():
+		log.Print("shutting down")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			log.Print(err)
+		}
+	}
 }

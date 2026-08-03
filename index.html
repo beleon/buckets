@@ -1,544 +1,322 @@
 <!doctype html>
-
 <html lang="en">
 <head>
-    <meta charset="utf-8">
-
-    <title>Buckets Homepage</title>
-    <meta name="description" content="Buckets Homepage. Store text or upload file.">
-    <style>
-        /* fork me on github style */
-        .github-corner:hover .octo-arm{animation:octocat-wave 560ms ease-in-out}@keyframes octocat-wave{0%,100%{transform:rotate(0)}20%,60%{transform:rotate(-25deg)}40%,80%{transform:rotate(10deg)}}@media (max-width:500px){.github-corner:hover .octo-arm{animation:none}.github-corner .octo-arm{animation:octocat-wave 560ms ease-in-out}}
-        #file-input {
-            cursor: pointer;
-            outline: none;
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 0;
-            height: 0;
-            overflow: hidden;
-            filter: alpha(opacity=0); /* IE < 9 */
-            opacity: 0;
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Buckets</title>
+<meta name="description" content="Tiny in-memory pastebin. Share text or files, gone after 24 hours.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🪣</text></svg>">
+<style>
+    :root {
+        --bg: #f6f4ef;
+        --card: #ffffff;
+        --ink: #24221d;
+        --muted: #7a756c;
+        --line: #e2ddd2;
+        --accent: #c2410c;
+        --accent-ink: #ffffff;
+        --code-bg: #efece4;
+        --err: #b91c1c;
+        --shadow: 0 6px 24px rgba(40, 30, 10, .18);
+    }
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --bg: #15140f;
+            --card: #201e18;
+            --ink: #eae7de;
+            --muted: #948f83;
+            --line: #37342b;
+            --accent: #e8763a;
+            --accent-ink: #201007;
+            --code-bg: #2a2820;
+            --err: #f87171;
+            --shadow: 0 6px 24px rgba(0, 0, 0, .5);
         }
-        .input-label {
-            cursor: pointer;
-            position: relative;
-            display: inline-block;
-        }
-        #overlay {
-            position: fixed; /* Sit on top of the page content */
-            display: none; /* Hidden by default */
-            width: 100%; /* Full width (cover the whole page) */
-            height: 100%; /* Full height (cover the whole page) */
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-color: rgba(0,0,0,0.5); /* Black background with opacity */
-            z-index: 2; /* Specify a stack order in case you're using a different order for other elements */
-        }
-        #confirm {
-            display: none;
-            background-color: #F3F5F6;
-            color: #000000;
-            border: 1px solid #aaa;
-            width: 500px;
-            height: 200px;
-            box-sizing: border-box;
-            margin: 0 auto 0 auto;
-        }
-        #confirm .message {
-            margin: 20px;
-        }
-        #confirm button {
-            color: black;
-            background-color: #F3F5F6;
-            border-color: black;
-            border-style: solid;
-            border-width: 2px;
-            margin-left: 188px;
-        }
-        textarea {
-            margin-top: 10px;
-            width: 100%;
-            height: 300px;
-            -moz-border-bottom-colors: none;
-            -moz-border-left-colors: none;
-            -moz-border-right-colors: none;
-            -moz-border-top-colors: none;
-            background: none repeat scroll 0 0 rgba(240, 240, 240, 0.9);
-            border-color: #FFFFFF #FFFFFF;
-            border-image: none;
-            border-radius: 6px 6px 6px 6px;
-            border-style: none solid solid none;
-            border-width: medium 1px 1px medium;
-            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12) inset;
-            color: #555555;
-            font-size: 1rem;
-            line-height: 1.4rem;
-            padding: 5px 8px;
-            transition: background-color 0.2s ease 0s;
-        }
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        background: var(--bg);
+        color: var(--ink);
+        font: 15px/1.5 system-ui, sans-serif;
+    }
 
+    header {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: .5rem;
+        padding: .5rem .9rem;
+        background: var(--card);
+        border-bottom: 1px solid var(--line);
+    }
+    .brand { font-size: 1.05rem; font-weight: 700; letter-spacing: -.01em; white-space: nowrap; }
+    .brand small { font-weight: 400; color: var(--muted); margin-left: .6rem; }
+    #name {
+        margin-left: auto;
+        width: 15rem;
+        max-width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--bg);
+        color: inherit;
+        padding: .4rem .7rem;
+        font: inherit;
+        font-size: .85rem;
+    }
+    #name:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+    button {
+        border: 1px solid transparent;
+        border-radius: 6px;
+        padding: .4rem 1rem;
+        font: inherit;
+        font-size: .85rem;
+        font-weight: 600;
+        background: var(--accent);
+        color: var(--accent-ink);
+        cursor: pointer;
+        white-space: nowrap;
+    }
+    button:hover { filter: brightness(1.08); }
+    button.ghost { background: transparent; color: var(--ink); border-color: var(--line); }
+    button.ghost:hover { border-color: var(--accent); color: var(--accent); filter: none; }
+    #helpBtn { padding: .4rem .75rem; border-radius: 50%; }
 
-        textarea:focus {
-            background: none repeat scroll 0 0 #FFFFFF;
-            outline-width: 0;
-        }
+    #text {
+        flex: 1;
+        width: 100%;
+        border: none;
+        resize: none;
+        padding: 1.1rem 1.25rem;
+        background: var(--bg);
+        color: var(--ink);
+        font: 14px/1.6 ui-monospace, monospace;
+    }
+    #text:focus { outline: none; }
 
-        button {
-            font-size: 0.85rem;
-            color: white;
-            background-color: #222;
-            border-color: white;
-            border-width: 2px;
-            border-style: solid;
-            border-radius: 35px;
-            padding-top: 15px;
-            padding-bottom: 18px;
-            padding-left: 50px;
-            padding-right: 50px;
-        }
+    #result {
+        position: fixed;
+        left: 50%;
+        bottom: 1.4rem;
+        transform: translateX(-50%);
+        display: flex;
+        align-items: center;
+        gap: .9rem;
+        max-width: min(92vw, 46rem);
+        padding: .7rem 1.1rem;
+        background: var(--card);
+        border: 1px solid var(--accent);
+        border-radius: 10px;
+        box-shadow: var(--shadow);
+        word-break: break-all;
+        font-size: .9rem;
+    }
+    #result[hidden] { display: none; }
+    #result a { color: var(--accent); font-family: ui-monospace, monospace; }
+    #result.error { border-color: var(--err); color: var(--err); }
+    #result button { flex-shrink: 0; padding: .25rem .7rem; font-size: .8rem; }
+    #result .copy { background: transparent; color: var(--accent); border-color: var(--accent); }
+    #result .close { background: transparent; color: var(--muted); border-color: transparent; padding: .25rem .3rem; }
+    #result .close:hover { color: var(--ink); filter: none; }
 
-        button::-moz-focus-inner {
-            border: 0;
-            padding: 0;
-        }
+    #help {
+        position: fixed;
+        top: 0;
+        right: 0;
+        height: 100%;
+        width: min(27rem, 100vw);
+        background: var(--card);
+        border-left: 1px solid var(--line);
+        box-shadow: var(--shadow);
+        padding: 1.1rem 1.4rem 2rem;
+        overflow-y: auto;
+        transform: translateX(102%);
+        transition: transform .18s ease;
+    }
+    #help.open { transform: none; }
+    #help .head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+    #help h2 { font-size: 1rem; margin: 0; }
+    #help h3 {
+        font-size: .75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: .09em;
+        color: var(--muted);
+        margin: 1.4rem 0 .4rem;
+    }
+    #help code {
+        display: block;
+        background: var(--code-bg);
+        border-radius: 6px;
+        padding: .45rem .7rem;
+        font: 12px/1.5 ui-monospace, monospace;
+        overflow-x: auto;
+        white-space: nowrap;
+    }
+    #help p { color: var(--muted); font-size: .85rem; margin: .5rem 0; }
+    #help a { color: var(--accent); }
+    #help p code { display: inline; padding: .05rem .3rem; font-size: .78rem; white-space: normal; }
 
-        button:hover, button:focus {
-            cursor: pointer;
-            font-size: 1rem;
-            position: relative;
-            left: -5px;
-            top: -2px;
-            padding-top: 16px;
-            padding-bottom: 19px;
-            padding-left: 52px;
-            padding-right: 52px;
-            outline: none;
-        }
+    #dropOverlay {
+        position: fixed;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        background: color-mix(in srgb, var(--bg) 60%, transparent);
+        backdrop-filter: blur(2px);
+        border: 3px dashed var(--accent);
+        color: var(--accent);
+        font-size: 1.6rem;
+        font-weight: 700;
+        pointer-events: none;
+    }
+    #dropOverlay.active { display: flex; }
 
-        /* https://github.com/markdowncss/retro/blob/master/css/retro.css
-           LICENSE:
-           The MIT License (MIT)
-           Copyright (c) 2014-2015 John Otander
-
-           Permission is hereby granted, free of charge, to any person obtaining a copy
-           of this software and associated documentation files (the "Software"), to deal
-           in the Software without restriction, including without limitation the rights
-           to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-           copies of the Software, and to permit persons to whom the Software is
-           furnished to do so, subject to the following conditions:
-
-           The above copyright notice and this permission notice shall be included in
-           all copies or substantial portions of the Software.
-
-           THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-           IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-           FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-           AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-           LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-           OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-           THE SOFTWARE.
-        */
-        pre,
-        code {
-            font-family: monospace;
-        }
-
-        pre {
-            padding: .5rem;
-            line-height: 1.25;
-            overflow-x: auto;
-        }
-
-        @media print {
-            *,
-            *:before,
-            *:after {
-                background: transparent !important;
-                color: #000 !important;
-                box-shadow: none !important;
-                text-shadow: none !important;
-            }
-
-            a,
-            a:visited {
-                text-decoration: underline;
-            }
-
-            a[href]:after {
-                content: " (" attr(href) ")";
-            }
-
-            abbr[title]:after {
-                content: " (" attr(title) ")";
-            }
-
-            a[href^="#"]:after,
-            a[href^="javascript:"]:after {
-                content: "";
-            }
-
-            pre,
-            blockquote {
-                border: 1px solid #999;
-                page-break-inside: avoid;
-            }
-
-            thead {
-                display: table-header-group;
-            }
-
-            tr,
-            img {
-                page-break-inside: avoid;
-            }
-
-            img {
-                max-width: 100% !important;
-            }
-
-            p,
-            h2,
-            h3 {
-                orphans: 3;
-                widows: 3;
-            }
-
-            h2,
-            h3 {
-                page-break-after: avoid;
-            }
-        }
-
-        a,
-        a:visited {
-            color: #31cc81;
-        }
-
-        a:hover,
-        a:focus,
-        a:active {
-            color: #2bb371;
-        }
-
-        .retro-no-decoration {
-            text-decoration: none;
-        }
-
-        html {
-            font-size: 12px;
-        }
-
-        @media screen and (min-width: 32rem) and (max-width: 48rem) {
-            html {
-                font-size: 15px;
-            }
-        }
-
-        @media screen and (min-width: 48rem) {
-            html {
-                font-size: 16px;
-            }
-        }
-
-        body {
-            line-height: 1.85;
-        }
-
-        p,
-        .retro-p {
-            font-size: 1rem;
-            margin-bottom: 1.3rem;
-        }
-
-        h1,
-        .retro-h1,
-        h2,
-        .retro-h2,
-        h3,
-        .retro-h3,
-        h4,
-        .retro-h4 {
-            margin: 1.414rem 0 .5rem;
-            font-weight: inherit;
-            line-height: 1.42;
-        }
-
-        h1,
-        .retro-h1 {
-            margin-top: 0;
-            font-size: 3.998rem;
-        }
-
-        h2,
-        .retro-h2 {
-            font-size: 2.827rem;
-        }
-
-        h3,
-        .retro-h3 {
-            font-size: 1.999rem;
-        }
-
-        h4,
-        .retro-h4 {
-            font-size: 1.414rem;
-        }
-
-        h5,
-        .retro-h5 {
-            font-size: 1.121rem;
-        }
-
-        h6,
-        .retro-h6 {
-            font-size: .88rem;
-        }
-
-        small,
-        .retro-small {
-            font-size: .707em;
-        }
-
-        /* https://github.com/mrmrs/fluidity */
-
-        img,
-        canvas,
-        iframe,
-        video,
-        svg,
-        select,
-        textarea {
-            max-width: 100%;
-        }
-
-        html,
-        body {
-            background-color: #222;
-            min-height: 100%;
-        }
-
-        html {
-            font-size: 18px;
-        }
-
-        body {
-            color: #fafafa;
-            font-family: sans-serif;
-            line-height: 1.45;
-            margin: 6rem auto 1rem;
-            max-width: 48rem;
-            padding: .25rem;
-        }
-
-        pre {
-            background-color: #333;
-        }
-
-        blockquote {
-            border-left: 3px solid #01ff70;
-            padding-left: 1rem;
-        }
-    </style>
+    /* Phones: brand and filename get their own rows, buttons share one. */
+    @media (max-width: 600px) {
+        .brand { width: 100%; }
+        #name { margin-left: 0; width: 100%; }
+        #share, #upload { flex: 1; }
+    }
+</style>
 </head>
-
 <body>
-<a href="https://www.github.com/sellleon/buckets" class="github-corner" aria-label="View source on GitHub"><svg width="80" height="80" viewBox="0 0 250 250" style="fill:#31cc81; color:#fff; position: fixed; top: 0; border: 0; right: 0;" aria-hidden="true"><path d="M0,0 L115,115 L130,115 L142,142 L250,250 L250,0 Z"></path><path d="M128.3,109.0 C113.8,99.7 119.0,89.6 119.0,89.6 C122.0,82.7 120.5,78.6 120.5,78.6 C119.2,72.0 123.4,76.3 123.4,76.3 C127.3,80.9 125.5,87.3 125.5,87.3 C122.9,97.6 130.6,101.9 134.4,103.2" fill="currentColor" style="transform-origin: 130px 106px;" class="octo-arm"></path><path d="M115.0,115.0 C114.9,115.1 118.7,116.5 119.8,115.4 L133.7,101.6 C136.9,99.2 139.9,98.4 142.2,98.6 C133.8,88.0 127.5,74.4 143.8,58.0 C148.5,53.4 154.0,51.2 159.7,51.0 C160.3,49.4 163.2,43.6 171.4,40.1 C171.4,40.1 176.1,42.5 178.8,56.2 C183.1,58.6 187.2,61.8 190.9,65.4 C194.5,69.0 197.7,73.2 200.1,77.6 C213.8,80.2 216.3,84.9 216.3,84.9 C212.7,93.1 206.9,96.0 205.4,96.6 C205.1,102.4 203.0,107.8 198.3,112.5 C181.9,128.9 168.3,122.5 157.7,114.1 C157.9,116.9 156.7,120.9 152.7,124.9 L141.0,136.5 C139.8,137.7 141.6,141.9 141.8,141.8 Z" fill="currentColor" class="octo-body"></path></svg></a>
-<div id="overlay"></div>
-<div style="z-index:10; width: 100%; position: absolute; left: 0; top: 0;">
-<div style="width: 100%; position: fixed; top: 300px;">
-<div id="confirm">
-    <p class="message"></p><br>
-    <button class="yes" onclick="reloadPage()">OK</button>
-</div>
-</div>
-</div>
-<article>
-    <header>
-        <h1><img style="width: 55px" class="buckets_logo"></img> Buckets</h1>
-        <p>
-        {{{auth<label for="auth_token"> Enter Auth Token<br>
-            <textarea id="auth_token" rows="1" style="height:1.4rem;resize: none;white-space: nowrap;" placeholder="Auth Token"></textarea>
-        </label>auth}}}
-            <br>
-        <label for="text_data">Enter text or upload file. Stored data may disappear after a while.
-            <textarea id="text_data" placeholder="Enter some text here..." autofocus></textarea>
-        </label>
-        </p>
-        <p>
-        <div style="height: 80px">
-        <div style="width: 200px; float: left;"><button onclick="submit()">SUBMIT</button></div>
-        <label for="file-input" class="input-label">
-            <button onclick="upload()">UPLOAD FILE</button>
-            <input type="file" id="file-input">
-        </label>
-        </div>
-        </p>
-    </header>
-    <h2>API Usage</h2>
-    <h3>Storing Buckets</h3>
-    <p>
-        To store a bucket send a POST request to <a href="{{baseurl}}">{{baseurl}}</a> with the message or file as the request body. Storing
-        a message with curl would look like this:
-        <pre><code>curl -X POST --data "Hello, World" {{baseurl}}</code></pre>
-        A file upload would look like this:
-        <pre><code>curl -X POST --data-binary @path/to/file {{baseurl}}</code></pre>
-        The response is the URL where your data is stored at. E.g. <a href="{{baseurl}}/shbo">{{baseurl}}/shbo</a>
-    </p>
-    <p>
-        You can also store a bucket at a location of your choice by sending a POST request to that location:
-        <pre><code>curl -X POST --data-binary @path/to/file {{baseurl}}/my/custom/bucket/location</code></pre>
-        Now your bucket is stored at <a href="{{baseurl}}/my/custom/bucket/location">{{baseurl}}/my/custom/bucket/location</a>.<br/>
-        WARNING: This will replace any data that was stored at this location before.
-    </p>
-    <h3>Retrieving Buckets</h3>
-    <p>
-        Simply send a GET request to the URL your bucket is stored at. E.g. through opening the address in your
-        browser or using curl:
-        <pre><code>curl {{baseurl}}/shbo</code></pre>
-        If your bucket stores binary data you can save the data into a file using:
-        <pre><code>curl -o path/to/savefile {{baseurl}}/shbo</code></pre>
-    </p>
-    <h3>Deleting Buckets</h3>
-    <p>
-        To delete a bucket send a DELETE request to the URL your bucket is stored at. E.g. using curl:
-        <pre><code>curl -X DELETE {{baseurl}}/shbo</code></pre>
-    </p>
-</article>
+
+<header>
+    <div class="brand">🪣 buckets<small>in-memory · gone in 24 h</small></div>
+    <input type="text" id="name" placeholder="filename (optional)">
+    <button id="share">Share text</button>
+    <button id="upload" class="ghost">Upload file</button>
+    <button id="helpBtn" class="ghost" aria-label="API help">?</button>
+    <input type="file" id="file" hidden>
+</header>
+
+<textarea id="text" placeholder="Type here and hit Share (Ctrl+Enter), paste an image, or drop a file anywhere." autofocus></textarea>
+
+<div id="result" hidden></div>
+
+<aside id="help">
+    <div class="head">
+        <h2>Using buckets with curl</h2>
+        <button class="ghost" id="helpClose">close</button>
+    </div>
+    <h3>share</h3>
+    <code>curl --data-binary @notes.txt <span class="origin"></span>/notes.txt</code>
+    <p>POST the data to <code>/&lt;filename&gt;</code>; the response is the bucket URL.</p>
+    <h3>fetch</h3>
+    <code>curl <span class="origin"></span>/&lt;slug&gt;/notes.txt</code>
+    <p>Content type is detected at upload and set on delivery. Range and HEAD work.</p>
+    <h3>replace</h3>
+    <code>curl --data-binary @notes.txt <span class="origin"></span>/&lt;slug&gt;/notes.txt</code>
+    <p>Needs the full existing path: slug <em>and</em> filename. Resets the 24&nbsp;h clock.</p>
+    <h3>delete</h3>
+    <code>curl -X DELETE <span class="origin"></span>/&lt;slug&gt;/notes.txt</code>
+    <h3>rules</h3>
+    <p>In the browser: Ctrl+Enter shares the text, pasting an image or dropping a file uploads it.</p>
+    <p>Filenames: <code>A-Z a-z 0-9 . _ -</code>, max 255 chars, no leading dash.</p>
+    <p>Limits: 500&nbsp;MB per upload and in total; oldest buckets are evicted first. 6 uploads per minute.</p>
+    <p>Everything lives in memory; nothing survives a restart.</p>
+    <h3>source</h3>
+    <p><a href="https://github.com/beleon/buckets-v2">github.com/beleon/buckets-v2</a><br>
+    <a href="https://codefloe.com/beleon/buckets-v2">codefloe.com/beleon/buckets-v2</a></p>
+</aside>
+
+<div id="dropOverlay">drop to share</div>
 
 <script>
-let favIcon = "data:image/png;base64," +
-    "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";
+const $ = id => document.getElementById(id);
+const result = $("result");
 
-let docHead = document.getElementsByTagName('head')[0];
-let newLink = document.createElement('link');
-newLink.rel = 'shortcut icon';
-newLink.href = favIcon;
-docHead.appendChild(newLink);
+for (const el of document.querySelectorAll(".origin")) el.textContent = location.origin;
 
-let logoImages = document.getElementsByClassName("buckets_logo");
-for (let i = 0; i < logoImages.length; i++) {
-    logoImages[i].src = favIcon;
+function randomName() {
+    let s = "";
+    for (const b of crypto.getRandomValues(new Uint8Array(6))) s += "abcdefghijklmnopqrstuvwxyz"[b % 26];
+    return s + ".txt";
 }
 
-function has(object, key) {
-    return object ? hasOwnProperty.call(object, key) : false;
+function sanitize(name) {
+    name = name.replace(/[^A-Za-z0-9._-]/g, "_").replace(/^-+/, "").slice(0, 255);
+    return !name || name === "." || name === ".." ? randomName() : name;
 }
 
-function reloadPage() {
-    window.location.href = "";
+// navigator.clipboard only exists in secure contexts; this service runs on
+// plain HTTP, so fall back to select-and-copy elsewhere.
+function copyText(text) {
+    if (navigator.clipboard) return navigator.clipboard.writeText(text).catch(() => {});
+    const ta = Object.assign(document.createElement("textarea"), { value: text });
+    document.body.append(ta);
+    ta.select();
+    document.execCommand("copy");
+    ta.remove();
 }
 
-function upload() {
-    document.activeElement.blur();
-    if (!has(window, "bucketActivated")) {
-        document.getElementById('file-input').onchange = function() {
-            showLoadingDialog();
-            sendData(document.getElementById('file-input').files[0]);
-        };
-        document.getElementById("file-input").click();
+function show(content, isError) {
+    result.hidden = false;
+    result.classList.toggle("error", !!isError);
+    const close = Object.assign(document.createElement("button"), { textContent: "✕", className: "close" });
+    close.onclick = () => { result.hidden = true; };
+    result.replaceChildren(...(Array.isArray(content) ? content : [document.createTextNode(content)]), close);
+}
+
+async function share(name, body) {
+    show("Uploading…");
+    try {
+        const res = await fetch("/" + name, { method: "POST", body });
+        const text = (await res.text()).trim();
+        if (!res.ok) return show(`Error ${res.status}: ${text}`, true);
+        const a = Object.assign(document.createElement("a"), { href: text, textContent: text });
+        const copy = Object.assign(document.createElement("button"), { textContent: "copy", className: "copy" });
+        copy.onclick = () => { copyText(text); copy.textContent = "copied"; };
+        show([a, copy]);
+    } catch (e) {
+        show("Upload failed: " + e, true);
     }
 }
 
-function submit() {
-    document.activeElement.blur();
-    if (!has(window, "bucketActivated")) {
-        showLoadingDialog();
-        let text = document.getElementById("text_data").value;
-        sendData(text);
-    }
+function shareFile(file) {
+    if (file) share(sanitize($("name").value.trim() || file.name), file);
 }
 
-function showLoadingDialog() {
-    let overlay = document.getElementById("overlay");
-    overlay.style.display = "block";
-    let confirmBox = document.getElementById("confirm");
-    confirmBox.getElementsByClassName("message")[0].innerHTML = "Sending data...";
-    confirmBox.style.display = "block";
-}
+$("share").onclick = () => {
+    const typed = $("name").value.trim();
+    share(typed ? sanitize(typed) : randomName(), $("text").value);
+};
+$("upload").onclick = () => $("file").click();
+$("file").onchange = () => { shareFile($("file").files[0]); $("file").value = ""; };
 
-function sendData(data) {
-    window.bucketActivated = true;
-    let path = "";
-    let authTokenEl = document.getElementById("auth_token");
-    if (authTokenEl) {
-        path = authTokenEl.value.replace(/(\r\n|\n|\r)/gm, "");
-    }
-    let xhttp = new XMLHttpRequest();
-    xhttp.onreadystatechange = function() {
-        if (this.readyState === 4) {
-            let confirmBox = document.getElementById("confirm");
-            if (this.status === 200) {
-                let res = this.responseText;
-                confirmBox.getElementsByClassName("message")[0].innerHTML = "The bucket is now available at <a href=\"" + res + "\">" + res + "</a>";
-            } else if (this.status === 413) {
-                confirmBox.getElementsByClassName("message")[0].innerHTML = "Data size too large."
-            } else {
-                confirmBox.getElementsByClassName("message")[0].innerHTML = "There was an error sending the data."
-            }
-        }
-    };
-    xhttp.open("POST", path, true);
-    xhttp.send(data);
-}
+$("helpBtn").onclick = () => $("help").classList.toggle("open");
+$("helpClose").onclick = () => $("help").classList.remove("open");
+document.addEventListener("keydown", e => { if (e.key === "Escape") $("help").classList.remove("open"); });
+
+$("text").addEventListener("keydown", e => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $("share").click(); }
+});
+
+$("name").addEventListener("keydown", e => {
+    if (e.key === "Enter") { e.preventDefault(); $("share").click(); }
+});
+
+// Pasting a file (e.g. a screenshot from the clipboard) uploads it directly.
+document.addEventListener("paste", e => {
+    const file = e.clipboardData && e.clipboardData.files[0];
+    if (file) { e.preventDefault(); shareFile(file); }
+});
+
+let dragDepth = 0;
+document.addEventListener("dragenter", e => { e.preventDefault(); dragDepth++; $("dropOverlay").classList.add("active"); });
+document.addEventListener("dragover", e => e.preventDefault());
+document.addEventListener("dragleave", () => { if (--dragDepth <= 0) { dragDepth = 0; $("dropOverlay").classList.remove("active"); } });
+document.addEventListener("drop", e => {
+    e.preventDefault();
+    dragDepth = 0;
+    $("dropOverlay").classList.remove("active");
+    shareFile(e.dataTransfer.files[0]);
+});
 </script>
 </body>
 </html>
