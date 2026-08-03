@@ -4,6 +4,9 @@ A tiny in-memory pastebin with curl support, successor to
 [beleon/buckets](https://github.com/beleon/buckets). One Go file, stdlib only,
 one embedded HTML page, zero configuration.
 
+Hosted at [github.com/beleon/buckets-v2](https://github.com/beleon/buckets-v2)
+and [codefloe.com/beleon/buckets-v2](https://codefloe.com/beleon/buckets-v2).
+
 Share text or files from any machine:
 
 ```bash
