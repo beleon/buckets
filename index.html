@@ -286,6 +286,10 @@ $("text").addEventListener("keydown", e => {
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $("share").click(); }
 });
 
+$("name").addEventListener("keydown", e => {
+    if (e.key === "Enter") { e.preventDefault(); $("share").click(); }
+});
+
 // Pasting a file (e.g. a screenshot from the clipboard) uploads it directly.
 document.addEventListener("paste", e => {
     const file = e.clipboardData && e.clipboardData.files[0];
