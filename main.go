@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/signal"
 	"path"
+	"slices"
 	"sync"
 	"syscall"
 	"time"
@@ -78,7 +79,9 @@ func (s *store) removeLocked(f *file) {
 	s.total -= len(f.data)
 	for i, g := range s.order {
 		if g == f {
-			s.order = append(s.order[:i], s.order[i+1:]...)
+			// slices.Delete zeroes the vacated tail slot; the append idiom
+			// would keep the last *file reachable and its data uncollectable.
+			s.order = slices.Delete(s.order, i, i+1)
 			break
 		}
 	}
@@ -294,6 +297,21 @@ func (a *app) delete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *app) readBody(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
+	if r.ContentLength > a.maxBody {
+		http.Error(w, "body too large", http.StatusRequestEntityTooLarge)
+		return nil, false
+	}
+	if n := r.ContentLength; n > 0 {
+		// Read straight into a right-sized buffer. io.ReadAll grows
+		// geometrically and peaks at ~2.4x the body for a 500 MB upload.
+		data := make([]byte, n)
+		if _, err := io.ReadFull(r.Body, data); err != nil {
+			http.Error(w, "error reading body", http.StatusBadRequest)
+			return nil, false
+		}
+		return data, true
+	}
+	// Chunked body (e.g. curl -T -): size unknown, fall back to ReadAll.
 	data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, a.maxBody))
 	if err != nil {
 		var tooLarge *http.MaxBytesError

@@ -64,6 +64,9 @@ docker run --rm -p 8080:8080 --memory 1.5g buckets
 The image is `FROM scratch` with a single static binary (the web UI is
 embedded). The server shuts down gracefully on SIGTERM. Memory budget:
 500 MB store + in-flight upload bodies, so ~1.5 GB is a safe container limit.
+The exception is piped uploads (`curl -T - ...`), which arrive chunked
+without a known size and can peak near 2 GB for a max-size body: give the
+container more room or write to a file first.
 
 ## Test
 

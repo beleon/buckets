@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -145,6 +146,64 @@ func TestBodyTooLarge(t *testing.T) {
 	}
 	if w := do(t, h, "POST", "/ok.bin", strings.Repeat("x", 10)); w.Code != http.StatusOK {
 		t.Fatalf("max-size upload: status %d, want 200", w.Code)
+	}
+}
+
+// failReader fails the test if anything tries to read from it.
+type failReader struct{ t *testing.T }
+
+func (f failReader) Read([]byte) (int, error) {
+	f.t.Fatal("body was read")
+	return 0, errors.New("unreachable")
+}
+
+// rawRequest builds a POST with an explicit Content-Length, bypassing
+// httptest.NewRequest's inference from the body.
+func rawRequest(target string, body io.Reader, contentLength int64) *http.Request {
+	req := httptest.NewRequest("POST", target, nil)
+	req.Body = io.NopCloser(body)
+	req.ContentLength = contentLength
+	return req
+}
+
+func TestBodyTooLargeRejectedBeforeRead(t *testing.T) {
+	a := testApp()
+	a.maxBody = 10
+	w := httptest.NewRecorder()
+	a.handler().ServeHTTP(w, rawRequest("/big.bin", failReader{t}, 11))
+	if w.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("declared oversize upload: status %d, want 413", w.Code)
+	}
+}
+
+func TestBodyTooLargeChunked(t *testing.T) {
+	a := testApp()
+	a.maxBody = 10
+	h := a.handler()
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, rawRequest("/big.bin", strings.NewReader(strings.Repeat("x", 11)), -1))
+	if w.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("chunked oversize upload: status %d, want 413", w.Code)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, rawRequest("/ok.bin", strings.NewReader("chunked"), -1))
+	if w.Code != http.StatusOK {
+		t.Fatalf("chunked upload: status %d, want 200", w.Code)
+	}
+	if got := do(t, h, "GET", uploadPath(t, h, "x.txt", "y"), "").Body.String(); got != "y" {
+		t.Fatalf("sanity get: %q", got)
+	}
+}
+
+func TestBodyShorterThanContentLength(t *testing.T) {
+	a := testApp()
+	w := httptest.NewRecorder()
+	a.handler().ServeHTTP(w, rawRequest("/short.bin", strings.NewReader("abc"), 5))
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("truncated body: status %d, want 400", w.Code)
+	}
+	if a.store.total != 0 {
+		t.Fatalf("truncated upload was stored: total=%d", a.store.total)
 	}
 }
 
