@@ -23,11 +23,11 @@ Or use the web UI:
 | Action   | Request                                | Notes                                        |
 |----------|----------------------------------------|----------------------------------------------|
 | Upload   | `POST /<filename>` with body           | Returns the bucket URL (`/<slug>/<filename>`) |
-| Download | `GET /<slug>/<filename>`               | Correct `Content-Type`, ranges, `HEAD`       |
+| Download | `GET /<slug>/<filename>` or `GET /<slug>` | Correct `Content-Type`, ranges, `HEAD`; the short form redirects |
 | Replace  | `POST /<slug>/<filename>` with body    | Full path must match exactly; resets the TTL |
 | Delete   | `DELETE /<slug>/<filename>`            |                                              |
 
-`GET /<slug>` redirects to the bucket's full path. `GET /` serves the web UI.
+`GET /` serves the web UI.
 
 Filenames must be POSIX portable: 1–255 chars of `A-Z a-z 0-9 . _ -`, not
 `.` or `..`, no leading `-`.
@@ -40,10 +40,10 @@ Filenames must be POSIX portable: 1–255 chars of `A-Z a-z 0-9 . _ -`, not
 - **500 MB total storage.** When full, the oldest buckets are evicted.
 - **Rate limits:** 6 POSTs/min, 60 requests/min for everything else (global,
   returns 429).
-- **Slugs:** 48 bits from `crypto/rand`, 8 base64url chars. Guessing a
-  bucket needs its filename too, and at the maximum rate the rate limit
-  allows, the chance of hitting one bucket within its lifetime is about
-  1 in 1.5 billion.
+- **Slugs:** 72 bits from `crypto/rand`, 12 base64url chars. The slug is
+  the whole secret (`GET /<slug>` redirects to the full path). Scanning at
+  the rate limit for a year against a full store has about a 1 in 17
+  billion chance of hitting any bucket.
 - **All in memory.** No disk, no database, nothing survives a restart.
 - **Zero config.** URLs are derived from the request's `Host` header (and
   `X-Forwarded-Proto` if set). There are no environment variables.

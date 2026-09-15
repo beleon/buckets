@@ -209,7 +209,7 @@
     <p>POST the data to <code>/&lt;filename&gt;</code>; the response is the bucket URL.</p>
     <h3>fetch</h3>
     <code>curl <span class="origin"></span>/&lt;slug&gt;/notes.txt</code>
-    <p>Content type is detected at upload and set on delivery. Range and HEAD work.</p>
+    <p>Content type is detected at upload and set on delivery. Range and HEAD work. <code>/&lt;slug&gt;</code> alone redirects to the full path.</p>
     <h3>replace</h3>
     <code>curl --data-binary @notes.txt <span class="origin"></span>/&lt;slug&gt;/notes.txt</code>
     <p>Needs the full existing path: slug <em>and</em> filename. Resets the 24&nbsp;h clock.</p>

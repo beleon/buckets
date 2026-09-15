@@ -330,8 +330,8 @@ func TestCaching(t *testing.T) {
 
 func TestSlugFormat(t *testing.T) {
 	slug := genSlug()
-	if len(slug) != 8 {
-		t.Fatalf("slug length = %d, want 8", len(slug))
+	if len(slug) != 12 {
+		t.Fatalf("slug length = %d, want 12", len(slug))
 	}
 	for _, c := range slug {
 		if !strings.ContainsRune("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_", c) {

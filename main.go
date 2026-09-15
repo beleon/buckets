@@ -34,10 +34,11 @@ const (
 	defaultTTL      = 24 * time.Hour
 	defaultMaxBody  = 500 * 1000 * 1000 // per upload
 	defaultMaxStore = 500 * 1000 * 1000 // across all buckets
-	// 48 bits -> 8 base64url chars. Sized for the personal-use threat
-	// model: guessing one bucket at the rate limit (1 req/s) for 50h has
-	// a ~1 in 1.5 billion chance, and a guess also needs the filename.
-	slugBytes         = 6
+	// 72 bits -> 12 base64url chars. The slug alone opens a bucket
+	// (GET /<slug> redirects to the full path), so it carries the whole
+	// secret: scanning at the rate limit (1 req/s) for a year against a
+	// full store of 8,640 buckets hits one with odds of ~1 in 17 billion.
+	slugBytes         = 9
 	uploadsPerMinute  = 6
 	requestsPerMinute = 60
 )
