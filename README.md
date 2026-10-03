@@ -38,14 +38,14 @@ Filenames must be POSIX portable: 1–255 chars of `A-Z a-z 0-9 . _ -`, not
 - **24h TTL.** Replacing a bucket resets its clock.
 - **500 MB max upload**, rejected while streaming with 413.
 - **500 MB total storage.** When full, the oldest buckets are evicted.
-- **Rate limits:** 6 POSTs/min, 60 requests/min for everything else (global,
+- **Rate limits:** 12 POSTs/min, 240 requests/min for everything else (global,
   returns 429).
 - **Slugs:** 15 Crockford base32 chars (75 bits from `crypto/rand`). The
   alphabet has no i, l, o or u, and lookups are case-insensitive and accept
   those lookalikes, so a slug survives being read aloud or retyped on
   another device. The slug is the whole secret (`GET /<slug>` redirects to
   the full path). Scanning at the rate limit for a year against a full
-  store has about a 1 in 140 billion chance of hitting any bucket.
+  store has about a 1 in 17 billion chance of hitting any bucket.
 - **All in memory.** No disk, no database, nothing survives a restart.
 - **Zero config.** URLs are derived from the request's `Host` header (and
   `X-Forwarded-Proto` if set). There are no environment variables.

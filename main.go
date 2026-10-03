@@ -1,7 +1,7 @@
 // Buckets is a tiny in-memory pastebin with curl support.
 //
 // Everything is opinionated and hardcoded: port 8080, 24h TTL, 500 MB max
-// body, 500 MB total storage (oldest evicted first), 6 uploads/min, 60
+// body, 500 MB total storage (oldest evicted first), 12 uploads/min, 240
 // requests/min for everything else. No auth, no TLS, no disk, no config.
 package main
 
@@ -36,11 +36,11 @@ const (
 	defaultMaxStore = 500 * 1000 * 1000 // across all buckets
 	// 15 Crockford base32 chars = 75 bits. The slug alone opens a bucket
 	// (GET /<slug> redirects to the full path), so it carries the whole
-	// secret: scanning at the rate limit (1 req/s) for a year against a
-	// full store of 8,640 buckets hits one with odds of ~1 in 140 billion.
+	// secret: scanning at the rate limit (4 req/s) for a year against a
+	// full store of 17,280 buckets hits one with odds of ~1 in 17 billion.
 	slugLen           = 15
-	uploadsPerMinute  = 6
-	requestsPerMinute = 60
+	uploadsPerMinute  = 12
+	requestsPerMinute = 240
 )
 
 // file is immutable once stored; replacing creates a new value.
