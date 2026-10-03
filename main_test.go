@@ -330,13 +330,37 @@ func TestCaching(t *testing.T) {
 
 func TestSlugFormat(t *testing.T) {
 	slug := genSlug()
-	if len(slug) != 12 {
-		t.Fatalf("slug length = %d, want 12", len(slug))
+	if len(slug) != slugLen {
+		t.Fatalf("slug length = %d, want %d", len(slug), slugLen)
 	}
 	for _, c := range slug {
-		if !strings.ContainsRune("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_", c) {
-			t.Fatalf("slug %q contains non-base64url char %q", slug, c)
+		if !strings.ContainsRune(slugAlphabet, c) {
+			t.Fatalf("slug %q contains non-Crockford char %q", slug, c)
 		}
+	}
+	if normSlug(slug) != slug {
+		t.Fatalf("canonical slug %q is not a fixed point of normSlug", slug)
+	}
+}
+
+func TestSlugLookupForgivesTypos(t *testing.T) {
+	h := testApp().handler()
+	p := uploadPath(t, h, "hello.txt", "hi")
+	slug := strings.Split(p, "/")[1]
+	// Uppercase it and swap in the lookalikes a human might type.
+	typed := strings.NewReplacer("0", "O", "1", "l").Replace(strings.ToUpper(slug))
+	if typed == slug {
+		t.Skip("slug has no case or lookalike characters to mangle")
+	}
+	w := do(t, h, "GET", "/"+typed, "")
+	if w.Code != http.StatusFound || w.Header().Get("Location") != p {
+		t.Fatalf("redirect for %q: status %d, location %q, want %q", typed, w.Code, w.Header().Get("Location"), p)
+	}
+	if w := do(t, h, "GET", "/"+typed+"/hello.txt", ""); w.Code != http.StatusOK || w.Body.String() != "hi" {
+		t.Fatalf("serve for %q: status %d, body %q", typed, w.Code, w.Body.String())
+	}
+	if w := do(t, h, "GET", "/"+slug+"u/hello.txt", ""); w.Code != http.StatusNotFound {
+		t.Fatalf("wrong slug: status %d, want 404", w.Code)
 	}
 }
 

@@ -10,7 +10,6 @@ import (
 	"context"
 	"crypto/rand"
 	_ "embed"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -21,6 +20,7 @@ import (
 	"os/signal"
 	"path"
 	"slices"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -34,11 +34,11 @@ const (
 	defaultTTL      = 24 * time.Hour
 	defaultMaxBody  = 500 * 1000 * 1000 // per upload
 	defaultMaxStore = 500 * 1000 * 1000 // across all buckets
-	// 72 bits -> 12 base64url chars. The slug alone opens a bucket
+	// 15 Crockford base32 chars = 75 bits. The slug alone opens a bucket
 	// (GET /<slug> redirects to the full path), so it carries the whole
 	// secret: scanning at the rate limit (1 req/s) for a year against a
-	// full store of 8,640 buckets hits one with odds of ~1 in 17 billion.
-	slugBytes         = 9
+	// full store of 8,640 buckets hits one with odds of ~1 in 140 billion.
+	slugLen           = 15
 	uploadsPerMinute  = 6
 	requestsPerMinute = 60
 )
@@ -156,12 +156,37 @@ func (s *store) delete(slug, name string) bool {
 	return true
 }
 
+// slugAlphabet is Crockford base32: digits and lowercase letters without
+// i, l, o and u, so a slug can be read aloud or retyped on another device
+// without lookalike mistakes. Lookups are case-insensitive and map i, l to
+// 1 and o to 0 (see normSlug).
+const slugAlphabet = "0123456789abcdefghjkmnpqrstvwxyz"
+
 func genSlug() string {
-	b := make([]byte, slugBytes)
+	b := make([]byte, slugLen)
 	if _, err := rand.Read(b); err != nil {
 		log.Panicf("crypto/rand failed: %v", err)
 	}
-	return base64.RawURLEncoding.EncodeToString(b)
+	for i := range b {
+		b[i] = slugAlphabet[b[i]&31]
+	}
+	return string(b)
+}
+
+// normSlug maps what a human might have typed back to the canonical slug.
+func normSlug(s string) string {
+	return strings.Map(func(r rune) rune {
+		switch r {
+		case 'I', 'i', 'L', 'l':
+			return '1'
+		case 'O', 'o':
+			return '0'
+		}
+		if 'A' <= r && r <= 'Z' {
+			return r + 'a' - 'A'
+		}
+		return r
+	}, s)
 }
 
 // limiter is a global token bucket.
@@ -252,7 +277,7 @@ func (a *app) upload(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *app) replace(w http.ResponseWriter, r *http.Request) {
-	slug, name := r.PathValue("slug"), r.PathValue("name")
+	slug, name := normSlug(r.PathValue("slug")), r.PathValue("name")
 	data, ok := a.readBody(w, r)
 	if !ok {
 		return
@@ -265,7 +290,7 @@ func (a *app) replace(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *app) serve(w http.ResponseWriter, r *http.Request) {
-	f, ok := a.store.get(r.PathValue("slug"))
+	f, ok := a.store.get(normSlug(r.PathValue("slug")))
 	if !ok || f.name != r.PathValue("name") {
 		http.NotFound(w, r)
 		return
@@ -281,7 +306,7 @@ func (a *app) serve(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *app) redirect(w http.ResponseWriter, r *http.Request) {
-	f, ok := a.store.get(r.PathValue("slug"))
+	f, ok := a.store.get(normSlug(r.PathValue("slug")))
 	if !ok {
 		http.NotFound(w, r)
 		return
@@ -290,7 +315,7 @@ func (a *app) redirect(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *app) delete(w http.ResponseWriter, r *http.Request) {
-	if !a.store.delete(r.PathValue("slug"), r.PathValue("name")) {
+	if !a.store.delete(normSlug(r.PathValue("slug")), r.PathValue("name")) {
 		http.NotFound(w, r)
 		return
 	}
